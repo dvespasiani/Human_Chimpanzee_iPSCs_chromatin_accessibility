@@ -1,0 +1,12 @@
+__default__ :
+    time : 10-23:00:00
+    nodes: 1
+    ntasks: 1
+    cpus-per-tasks: 20
+    mem: 400000
+    hint: nomultithread 
+    mail_user : dvespasiani@student.unimelb.edu.au
+    mail_type: FAIL
+    account: punim0586
+    partition: mig
+    output: ./slurm_report/slurm.out

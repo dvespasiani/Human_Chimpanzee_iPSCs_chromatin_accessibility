@@ -1,0 +1,27 @@
+description: panTro5 snakemake configuration file
+
+samples:
+       - C3647 
+       - C3649
+       - C3651
+       - C4955
+       - C8861
+       - C40280
+       - H19101
+       - H20961
+       - H28834
+       - HUtt45
+       - H19114 
+       - HUtt60
+       # merged: *file ## this is the 7th file which is used for consensus peak call
+
+CLUSTER: 'env/cluster.yaml'
+
+index_genome_dir: "data/Index_genome/panTro5"
+genome_size: 2792339170
+chrom_sizes: 'data/Index_genome/panTro5.chrom.sizes'
+2bit_index: "data/Index_genome/panTro5.2bit" 
+blacklist: "../data/ENCODE_blacklisted/panTro5_blacklist_v2.bed"
+
+## tmp dir for Deeptools
+tmp_dir: /data/scratch/projects/punim0586/dvespasiani

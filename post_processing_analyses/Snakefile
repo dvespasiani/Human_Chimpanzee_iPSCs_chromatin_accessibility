@@ -1,0 +1,31 @@
+
+configfile: "env/config.yaml"
+
+rule all:
+    input:
+        expand('output/DA/peak_sequences/{species}_hg38coord_peak_fasta.fa',species=config['species']),
+        expand('output/fimo_meme/{species}/',species=config['species']),
+        expand('output/fimo_jaspar/{species}/',species=config['species']),
+
+rule fimo_hocomoco:
+    input:
+        'output/DA/peak_sequences/{species}_hg38coord_peak_fasta.fa'
+    params:
+        hocomoco = config['hocomoco_file'],
+        threshold = 0.0001
+    output:
+        directory('output/fimo_meme/{species}/')
+    shell:
+        'fimo --bfile --motif-- --thresh {params.threshold} --o {output} {params.hocomoco} {input}' 
+
+rule fimo_jaspar:
+    input:
+        'output/DA/peak_sequences/{species}_hg38coord_peak_fasta.fa'
+    params:
+        hocomoco = config['jaspar_file'],
+        threshold = 0.0001
+    output:
+        directory('output/fimo_jaspar/{species}/')
+    shell:
+        'fimo --bfile --motif-- --thresh {params.threshold} --o {output} {params.hocomoco} {input}' 
+
