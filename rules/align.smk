@@ -4,32 +4,31 @@
 ## =================================================
 rule align:
   input:
-    r1="../data/input_files/Trimmed_reads/{sample}_1.fastq.gz",
-    r2="../data/input_files/Trimmed_reads/{sample}_2.fastq.gz"
+    r1 = reads_input_dir + "{sample}_1.fastq.gz",
+    r2 = reads_input_dir + "{sample}_2.fastq.gz"
   output:
-    "output/Alignment/Files/{sample}.bam"
+    aligment_outdir + "{sample}.bam"
   params:
-    index=config['index_genome_dir']
+    index = index_genome_dir
   group:
-    "Main"
+    main_group
   log:
-    "output/Alignment/QCs/{sample}_bowtie_Align_qc.log"
+    aligment_logdir + "{sample}_bowtie_Align_qc.log"
   shell:
-    "bowtie2 -q -X 2000 \
-    --very-sensitive -x {params.index} \
+    "bowtie2 -q -X 2000 -x {params.index} \
     -1 {input.r1} -2 {input.r2} 2> {log} \
     | samtools view -Su | samtools sort -n -o {output}"
 
-## Alignment statistics
-rule alignStat:
-  input:
-    rules.align.output
-  output:
-    "output/Alignment/QCs/{sample}_align_flagstat.qc"
-  group:
-    "Main"
-  log:
-    "logs/Alignment/{sample}_alignStat.log"
-  shell:
-    "samstat {input} > {output} 2> {log}"
+# ## Alignment statistics
+# rule alignStat:
+#   input:
+#     rules.align.output
+#   output:
+#     "output/Alignment/QCs/{sample}_align_flagstat.qc"
+#   group:
+#     "Main"
+#   log:
+#     "logs/Alignment/{sample}_alignStat.log"
+#   shell:
+#     "samstat {input} > {output} 2> {log}"
  

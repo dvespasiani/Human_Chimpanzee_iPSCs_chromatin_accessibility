@@ -1,4 +1,3 @@
-
 ##=========================================
 ## 8. Run deeTools2 to get: 
 ## a) BAM files summary 
@@ -6,8 +5,8 @@
 ## c) fingerprint
 ## d) BAM coverage
 ##=========================================
-dedup_bam="output/Alignment/Files/{sample}_nochrM_encodefiltered_fixmate_rmorphanread_nodup.bam"
-index_bam="output/Alignment/Files/{sample}_nochrM_encodefiltered_fixmate_rmorphanread_nodup.bai"
+dedup_bam = aligment_outdir + "{sample}_nochrM_encodefiltered_fixmate_rmorphanread_nodup.bam"
+index_bam = aligment_outdir + "{sample}_nochrM_encodefiltered_fixmate_rmorphanread_nodup.bai"
 
 # ## First remove blacklisted regions and index resulting bam
 # rule blacklist_remove:
@@ -19,7 +18,7 @@ index_bam="output/Alignment/Files/{sample}_nochrM_encodefiltered_fixmate_rmorpha
 #   params: 
 #    blacklist=config['blacklist']
 #   group: 
-#    "DeepTools"
+#    deeptools_group
 #   log:
 #    "logs/DeepTools/{sample}_bedtools_intersect.log"
 #   shell:
@@ -31,7 +30,7 @@ index_bam="output/Alignment/Files/{sample}_nochrM_encodefiltered_fixmate_rmorpha
 #   output:
 #    temp("output/DeepTools/Files/{sample}.blacklist_removed.bai")
 #   group: 
-#    "DeepTools"
+#    deeptools_group
 #   log:
 #    "logs/DeepTools/{sample}_no_blacklist_index.log"
 #   shell:
@@ -42,13 +41,13 @@ rule deeptools_coverage:
     bam = dedup_bam,
     bai = index_bam
   output:
-    "output/DeepTools/Files/{sample}.SeqDepthNorm.bw"
+    deeptools_outdir + "{sample}.SeqDepthNorm.bw"
   group: 
-   "DeepTools"
+   deeptools_group
   params:
-    genome_size = config['genome_size']
+    genome_size = genome_size
   log:
-    "logs/DeepTools/{sample}_deepTools_coverage.log"
+    deepTools_logdir + "{sample}_coverage.log"
   shell:
    "bamCoverage \
    --bam {input.bam} \
@@ -59,17 +58,17 @@ rule deeptools_coverage:
 
 rule deeptools_plot_coverage:
   input:
-    bam = expand(dedup_bam,sample=config["samples"]),
-    bai = expand(index_bam,sample=config["samples"]),
+    bam = expand(dedup_bam,sample=sample),
+    bai = expand(index_bam,sample=sample),
   output:
-   "output/DeepTools/QCs/Samples_plotCoverage.png"
+   deeptools_outdir + "Samples_plotCoverage.png"
   params:
-   minQual=30,
-   sample=25000000
+   minQual = minQual,
+   sample = 25000000
   group: 
-   "DeepTools"
+   deeptools_group
   log:
-   "logs/DeepTools/deepTools_plotCoverage.log"
+   deepTools_logdir + "plotCoverage.log"
   shell:
    "plotCoverage \
    --bamfiles {input.bam}\
@@ -80,18 +79,18 @@ rule deeptools_plot_coverage:
 
 rule deeptools_fingerprint:
   input:
-    bam = expand(dedup_bam,sample=config["samples"]),
-    bai = expand(index_bam,sample=config["samples"]),
+    bam = expand(dedup_bam,sample=sample),
+    bai = expand(index_bam,sample=sample),
   output:
-    fig="output/DeepTools/QCs/Samples_plotfingerprint.png",
-    metrics="output/DeepTools/Files/multiBAM_fingerprint_metrics.txt",
-    rawcounts="output/DeepTools/Files/multiBAM_fingerprint_rawcounts.txt"
+    fig = deeptools_outdir + "Samples_plotfingerprint.png",
+    metrics = deeptools_outdir + "multiBAM_fingerprint_metrics.txt",
+    rawcounts = deeptools_outdir + "multiBAM_fingerprint_rawcounts.txt"
   params:
-   minQual=30
+   minQual = minQual
   group: 
-   "DeepTools"
+   deeptools_group
   log:
-   "logs/DeepTools/deepTools_plotFingerprint.log"
+   deepTools_logdir + "plotFingerprint.log"
   shell:
     "plotFingerprint \
     -b {input.bam} \
@@ -107,17 +106,17 @@ rule computeGCbias:
     bam = dedup_bam,
     bai = index_bam
   output:
-   content="output/DeepTools/QCs/{sample}_GC_content.txt",
-   plot="output/DeepTools/QCs/{sample}_plot_GC_content.png"
+   content = deeptools_outdir + "{sample}_GC_content.txt",
+   plot = deeptools_outdir + "{sample}_plot_GC_content.png"
   params:
-   genome_size=config['genome_size'],
-   genome2bit=config['2bit_index'],
-   plot_format='png',
-   threads=5
+   genome_size = genome_size,
+   genome2bit = genome2bit_index,
+   plot_format = 'png',
+   threads = 5
   group: 
-   "DeepTools"
+   deeptools_group
   log:
-   "logs/DeepTools/{sample}_deepTools_GC_content.log"
+   deepTools_logdir + "{sample}_GC_content.log"
   shell:
    "computeGCBias \
    -b {input.bam}\
@@ -131,16 +130,16 @@ rule computeGCbias:
 # keep these inputs instead as this rule will need all aligned/filtered bams
 rule deeptools_summary:
   input:
-    bam = expand(dedup_bam,sample=config["samples"]),
-    bai = expand(index_bam,sample=config["samples"]),
+    bam = expand(dedup_bam,sample=sample),
+    bai = expand(index_bam,sample=sample),
   output:
-    summary="output/DeepTools/Files/Summary.npz",
-    readcounts="output/DeepTools/Files/Readcounts.txt"
+    summary = deeptools_outdir + "Summary.npz",
+    readcounts = deeptools_outdir + "Readcounts.txt"
   threads: 5
   group: 
-   "DeepTools"
+   deeptools_group
   log:
-    "logs/DeepTools/deepTools_summary.log"
+    deepTools_logdir + "summary.log"
   shell:
    "multiBamSummary bins \
     -p {threads} \
@@ -152,12 +151,12 @@ rule deeptools_correlation:
   input:
    rules.deeptools_summary.output.summary
   output:
-    fig="output/DeepTools/QCs/PearsonCor_multibamsum.png",
-    matrix="output/DeepTools/Files/PearsonCor_multibamsum_matrix.txt"
+    fig = deeptools_outdir + "PearsonCor_multibamsum.png",
+    matrix = deeptools_outdir + "PearsonCor_multibamsum_matrix.txt"
   group: 
-   "DeepTools"
+   deeptools_group
   log:
-    "logs/DeepTools/deepTools_correlation.log"
+    deepTools_logdir + "correlation.log"
   shell:
     "plotCorrelation \
     --corData {input} \
