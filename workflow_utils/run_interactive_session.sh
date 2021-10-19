@@ -7,7 +7,7 @@ sinteractive \
  --account=punim0586  \
  --ntasks=1 \
  --cpus-per-task=1 \
- --mem=20000 \
+ --mem=40000 \
  --time=12:00:00 \
  --partition=mig
  

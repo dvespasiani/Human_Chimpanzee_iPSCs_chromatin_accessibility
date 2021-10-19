@@ -1,6 +1,7 @@
 description: hg38 snakemake configuration file
+assembly: hg38
 
-samples: 
+samples: &samples
        - C3647 
        - C3649
        - C3651
@@ -14,15 +15,16 @@ samples:
        - H19114
        - HUtt60
 
-#merged: *file ## this is the 7th file which is used for consensus peak call
+merged_sample: &merged_sample 'merged_sample' ## this will combine all the 12 samples into a 13th file
+augmented_samples: 
+       - [*merged_sample]
+       - *samples
 CLUSTER: 'env/cluster.yaml'
-
 index_genome_dir: "data/Index_genome/hg38"
 genome_size: 2913022398
 chrom_sizes: 'data/Index_genome/hg38.chrom.sizes'
-2bit_index: "data/Index_genome/hg38.2bit" 
+genome2bit_index: "data/Index_genome/hg38.2bit" 
 blacklist: "../data/ENCODE_blacklisted/hg38_blacklist_v2.bed"
 
 ## tmp dir for Deeptools
 tmp_dir: /data/scratch/projects/punim0586/dvespasiani
-

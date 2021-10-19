@@ -49,12 +49,14 @@ macs2 callpeak --format BAMPE --treatment ${input}/${prefix}_tn5_shifted_sorted.
     --name ${prefix}_macs2_default --shift 100 --nomodel -B --SPMR \
     --extsize 200 --pvalue 0.01 --call-summits -g ${genome_size}
 
-echo "Removing peaks within blacklisted regions";
-bedtools intersect -v  \
--a ${output}/${prefix}_macs2_default_peaks.narrowPeak \
--b $blacklist | awk 'BEGIN{{OFS="\t"}} {{if ($5>1000) $5=1000; print $0}}' \
- | awk '$1 ~ /^chr(1?[0-9]|2[0-2]|X|Y|2A|2B)$/'> ${output}/${prefix}_macs2_default_filtered.narrowPeak 
+## dont do these
+# echo "Removing peaks within blacklisted regions";
+# bedtools intersect -v  \
+# -a ${output}/${prefix}_macs2_default_peaks.narrowPeak \
+# -b $blacklist | awk 'BEGIN{{OFS="\t"}} {{if ($5>1000) $5=1000; print $0}}' \
+#  | awk '$1 ~ /^chr(1?[0-9]|2[0-2]|X|Y|2A|2B)$/'> ${output}/${prefix}_macs2_default_filtered.narrowPeak 
 
-echo "Sorting final consensus peak set";
-sort -k 8gr,8gr ${output}/${prefix}_macs2_default_filtered.narrowPeak | awk 'BEGIN{{OFS="\t"}}{{$4="Peak_"NR ; print $0}}' \
-|  head -n 300000 | gzip -nc > ${output}/${prefix}_macs2_default_peaks_filtered_sorted.narrowPeak.gz
+# echo "Sorting final consensus peak set";
+# sort -k 8gr,8gr ${output}/${prefix}_macs2_default_filtered.narrowPeak | awk 'BEGIN{{OFS="\t"}}{{$4="Peak_"NR ; print $0}}' \
+# |  head -n 300000 | gzip -nc > ${output}/${prefix}_macs2_default_peaks_filtered_sorted.narrowPeak.gz
+

@@ -17,12 +17,20 @@ setwd('/data/projects/punim0595/dvespasiani/Human_Chimpanzee_iPSCs_chromatin_acc
 scripts_dir = './post_processing_analyses/scripts/'
 source(paste(scripts_dir,'reusable_functions.R',sep=''))
 
-peakDir = './post_processing_analyses/output/DA/peaks/'
-plot_dir = './post_processing_analyses/output/plots/GO_enrich/'
-table_dir = './post_processing_analyses/output/tables/GO_enrich/'
-target_genes_dir = './post_processing_analyses/output/GO/target_genes/'
 
-species_colors= c("#F8766D","#7CAE00","#00BFC4")
+chrom_state_dir <- './data/iPSC_chrom_states_hg38'
+plot_dir <- './post_processing_analyses/output/plots/GO_enrich/'
+da_dir <- './post_processing_analyses/output/DA/'
+table_dir <- './post_processing_analyses/output/tables/GO_enrich/'
+target_genes_dir <- './post_processing_analyses/output/GO/target_genes/'
+
+## get DA peaks
+da_file <- paste(da_dir,genome,'/',genome,'_da_results.txt',sep='')
+da_results <- fread(da_file,sep='\t',header=T,select=c(range_keys,'DA','peakID','logFC'))
+setkeyv(da_results,range_keys)
+
+
+species_colors <- c("#F8766D","#7CAE00","#00BFC4")
 
 ## using peaks after DA analysis (both da and non DA)
 human_peaks = read_da_peaks('human_da_results.txt',c('significant','non_significant'))

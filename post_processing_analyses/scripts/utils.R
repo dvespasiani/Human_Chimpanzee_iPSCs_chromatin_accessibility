@@ -1,9 +1,77 @@
-##---------------------------
-## functions to read files
-##---------------------------
-range_keys = c('seqnames','start','end')
-species_names = c('chimp','common','human')
+## directories 
+da_dir <- './output/DA/'
+plot_dir <- './output/plots/'
+outdir <- './output/'
+bamDir  <- "/output/Post_alignment/Files"
+
+## vectors
+samples_names <- c(
+  "C3647",
+  "C3649",
+  "C3651",
+  "C40280",
+  "C4955",
+  "C8861",
+  "H19101",
+  "H19114",
+  "H20961",
+  "H28834",
+  "HUtt45",
+  "HUtt60"
+)
+
+range_keys <- c('seqnames','start','end')
+species_names <- c('chimp','common','human')
+peak_type <- c('da','non_da')
 chain_path <- './data/LiftOver_chains/'
+
+chrom_states <- c(
+  "1_TssA","2_TssAFlnk","3_TxFlnk",
+  "4_Tx","5_TxWk","6_EnhG",
+  "7_Enh","8_ZNF/Rpts","9_Het",
+  "10_TssBiv","11_BivFlnk","12_EnhBiv",
+  "13_ReprPC","14_ReprPCWk","15_Quies"
+)
+
+##----------------
+## color palette
+##----------------
+samples_palette <- RcolorBrewer::brewer.pal(12, 'Set3')
+names(samples_palette) <- samples_names
+
+da_palette <- c('#e9c46a','#2a9d8f')
+names(da_palette) <- peak_type
+
+##---------------------------
+## functions
+##---------------------------
+# export_file <- function(directory,filename){
+#     genomes <- c('hg38','panTro5')
+#     dirs <- list()
+#     for (g in genomes){
+#         dirs[[g]] <- paste(directory,g,sep='')
+#         dir.create(dirs[[g]], showWarnings = FALSE)
+#     }
+#     file <- purrr::map2(dirs,genomes,function(x,y){
+#         f <- paste(x,'/',y,'_',filename,sep='')
+#         return(f)
+#     })
+
+#     return(file)
+# }
+
+create_dir <- function(base_dir,path){
+  dir <- paste(base_dir,path,'/',sep='')
+  dir.create(dir,showWarnings=F,recursive = TRUE)
+  return(dir)
+}
+
+export_file <- function(directory,genome,filename){
+    dir <- paste(directory,genome,sep='/')
+    dir.create(dir, showWarnings = FALSE)
+    file <- paste(dir,'/',genome,'_',filename,sep='')
+    return(file)
+}
 
 ## peaks DA/NON-DA
 # read_da_peaks = function(file){
