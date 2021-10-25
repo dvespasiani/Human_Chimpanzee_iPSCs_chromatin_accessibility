@@ -15,14 +15,11 @@ scripts_dir <- './scripts/'
 source(paste(scripts_dir,'utils.R',sep=''))
 
 chrom_state_dir <- '../data/iPSC_chrom_states_hg38'
-# outfile_dir <- create_dir(da_dir,genome)
 outplot_dir <- create_dir(plot_dir,'chromstate_annotation')
-
-genome <- 'hg38'
 
 ## get DA peaks
 da_file <- paste(da_dir,genome,'/','da_results.txt',sep='')
-da_results <- fread(da_file,sep='\t',header=T,select=c(range_keys,'DA','peakID','logFC'))
+da_results <- fread(da_file,sep='\t',header=T,select=c(range_keys,'DA','peakID','peak_species'))
 setkeyv(da_results,range_keys)
 
 ## get tissues 
@@ -34,7 +31,7 @@ peak_annotation <- foverlaps(da_results,ipsc_chromstate,type='any')[
   ,c(range_keys[-1]):=NULL
 ]%>%na.omit()%>%
   setnames(old=c('i.start','i.end'),new=c(range_keys[-1]))
-
+peak_annotation <- peak_annotation[,peak_species:=ifelse(peak_species == 'common','common','species_specific')]
 ##-------------------------------------------------------
 ## Calculate odds ratio of 
 ## DA(species-specific) vs non-DA (common) windows(peaks)
@@ -43,15 +40,19 @@ peak_counts_chromstate <- copy(peak_annotation)[
     ,cell_type:=NULL
 ]%>%unique()
 peak_counts_chromstate <- peak_counts_chromstate[
-      ,numb_peaks_chromstate:=.N,by=.(chrom_state,DA)
+      ,numb_peaks_chromstate:=.N,by=.(chrom_state,peak_species)
       ][
-        ,numb_peaks:=.N,by=.(DA)
+        ,numb_peaks:=.N,by=.(peak_species)
         ][
-            ,c('DA','chrom_state','numb_peaks_chromstate','numb_peaks')
+            ,c('peak_species','chrom_state','numb_peaks_chromstate','numb_peaks')
 ]%>%unique()
 
-da_peaks_counts <- copy(peak_counts_chromstate)[DA =='da'] 
-nonda_peaks_counts <- copy(peak_counts_chromstate)[DA =='non_da'] 
+
+common_peaks <-copy(peak_counts_chromstate)[peak_species =='common'] 
+species_specific_peaks <-copy(peak_counts_chromstate)[peak_species !='common'] 
+
+# da_peaks_counts <- copy(peak_counts_chromstate)[DA =='da'] 
+# nonda_peaks_counts <- copy(peak_counts_chromstate)[DA =='non_da'] 
 
 calculate_or <- function(peaks_oi,peaks_noi,merging_keys){
   peaksoi_vs_peaksnoi_or <- merge(peaks_oi,peaks_noi,by=c(merging_keys))%>%
@@ -73,11 +74,11 @@ calculate_or <- function(peaks_oi,peaks_noi,merging_keys){
   return(or_results)
 }
 
-da_vs_nonda_or <- calculate_or(da_peaks_counts,nonda_peaks_counts,'chrom_state')
-
+# da_vs_nonda_or <- calculate_or(da_peaks_counts,nonda_peaks_counts,'chrom_state')
+peaks_or <- calculate_or(common_peaks,species_specific_peaks,'chrom_state')
 ## plot the results
 ## get chromHMM colors
-chromHMM_colors <- nihroadmap_colors(da_vs_nonda_or,'elements')
+chromHMM_colors <- nihroadmap_colors(peaks_or,'elements')
 
 plot_or <- function(or,ylab){
   p <- ggplot(or, aes(x=factor(elements,levels=chrom_states), y=odds_ratio,label = p.signif)) + 
@@ -99,34 +100,34 @@ plot_or <- function(or,ylab){
   return(p)
 }
 
-pdf(paste(outplot_dir,'OR_da_vs_nonda_peaks_chromstate.pdf',sep=''),width=8,height = 5)
-plot_or(or = da_vs_nonda_or,ylab = 'odds ratio \n DA vs non DA peaks')
+pdf(paste(outplot_dir,'OR_common_vs_species_specific_peaks_chromstate.pdf',sep=''),width=8,height = 5)
+plot_or(or = peaks_or,ylab = 'odds ratio \n common vs species-specific peaks')
 dev.off()
 
-## hypothesis: enrichment in het because chimp ipscs are > primed than humans 
-## check whether this enrichment is caused by peaks that are not accessible in humans 
-species_accessibility <- copy(peak_annotation)[
-  DA=='da'
-  ][
-    ,species:=ifelse(logFC<0,'chimp','human')
-    ][
-      ,c('cell_type','logFC'):=NULL
-]%>%unique()
+# ## hypothesis: enrichment in het because chimp ipscs are > primed than humans 
+# ## check whether this enrichment is caused by peaks that are not accessible in humans 
+# species_accessibility <- copy(peak_annotation)[
+#   DA=='da'
+#   ][
+#     ,species:=ifelse(logFC<0,'chimp','human')
+#     ][
+#       ,c('cell_type','logFC'):=NULL
+# ]%>%unique()
 
-species_accessibility <- species_accessibility[
-      ,numb_peaks_chromstate:=.N,by=.(chrom_state,species)
-      ][
-        ,numb_peaks:=.N,by=.(species)
-        ][
-            ,c('species','chrom_state','numb_peaks_chromstate','numb_peaks')
-]%>%unique()
+# species_accessibility <- species_accessibility[
+#       ,numb_peaks_chromstate:=.N,by=.(chrom_state,species)
+#       ][
+#         ,numb_peaks:=.N,by=.(species)
+#         ][
+#             ,c('species','chrom_state','numb_peaks_chromstate','numb_peaks')
+# ]%>%unique()
 
-chimp_peaks_counts <- copy(species_accessibility)[species =='chimp'] 
-human_peaks_counts <- copy(species_accessibility)[species =='human'] 
+# chimp_peaks_counts <- copy(species_accessibility)[species =='chimp'] 
+# human_peaks_counts <- copy(species_accessibility)[species =='human'] 
 
-human_vs_chimp_or <- calculate_or(human_peaks_counts,chimp_peaks_counts,'chrom_state')
+# human_vs_chimp_or <- calculate_or(human_peaks_counts,chimp_peaks_counts,'chrom_state')
 
-pdf(paste(outplot_dir,'OR_human_vs_chimp_da_peaks_chromstate.pdf',sep=''),width=8,height = 5)
-plot_or(or = human_vs_chimp_or,ylab = 'odds ratio \n humans vs chimp DA peaks')
-dev.off()
+# pdf(paste(outplot_dir,'OR_human_vs_chimp_da_peaks_chromstate.pdf',sep=''),width=8,height = 5)
+# plot_or(or = human_vs_chimp_or,ylab = 'odds ratio \n humans vs chimp DA peaks')
+# dev.off()
 

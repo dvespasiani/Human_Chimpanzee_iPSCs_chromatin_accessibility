@@ -2,7 +2,8 @@
 da_dir <- './output/DA/'
 plot_dir <- './output/plots/'
 outdir <- './output/'
-bamDir  <- "/output/Post_alignment/Files"
+bamDir  <- "/output/Alignment/Files"
+genome <- 'hg38'
 
 ## vectors
 samples_names <- c(
@@ -23,7 +24,8 @@ samples_names <- c(
 range_keys <- c('seqnames','start','end')
 species_names <- c('chimp','common','human')
 peak_type <- c('da','non_da')
-chain_path <- './data/LiftOver_chains/'
+chain_path <- '/data/projects/punim0595/dvespasiani/Human_Chimpanzee_iPSCs_chromatin_accessibility/data/LiftOver_chains/'
+standard_chr <- paste0("chr", c(1:23,'2A','2B', "X", "Y")) # only use standard chromosomes
 
 chrom_states <- c(
   "1_TssA","2_TssAFlnk","3_TxFlnk",
@@ -36,9 +38,10 @@ chrom_states <- c(
 ##----------------
 ## color palette
 ##----------------
-samples_palette <- RcolorBrewer::brewer.pal(12, 'Set3')
+samples_palette <- RColorBrewer::brewer.pal(12, 'Set3')
 names(samples_palette) <- samples_names
-
+species_palette <- c('#ff7d00','#ffecd1','#15616d')
+names(species_palette) <- species_names
 da_palette <- c('#e9c46a','#2a9d8f')
 names(da_palette) <- peak_type
 
@@ -144,7 +147,7 @@ bin_distance = function(x,column){
 ##-------------
 ## LiftOver
 ##-------------
-liftPeaks =  function(peaks,chain_file){
+liftPeaks <-  function(peaks,chain_file){
     chain <- rtracklayer::import.chain(chain_file)
     peaks_gr = makeGRangesFromDataFrame(peaks,keep.extra.columns=T)
     seqlevelsStyle(peaks_gr) = "UCSC" 
@@ -152,25 +155,27 @@ liftPeaks =  function(peaks,chain_file){
     return(lifted_coord)
 }
 
-convert_coord = function(peaks,chain_file){
+convert_coord <- function(peaks,chain_file){
     chain <- rtracklayer::import.chain(paste(chain_path,chain_file,sep=''))
-    peaks_df = copy(peaks)[,width:=end-start]
-    peaks_gr = makeGRangesFromDataFrame(peaks_df,keep.extra.columns=T)
-    seqlevelsStyle(peaks_gr) = "UCSC" 
+    peaks_df <- copy(peaks)[,width:=end-start]
+    peaks_gr <- makeGRangesFromDataFrame(peaks_df,keep.extra.columns=T)
+    seqlevelsStyle(peaks_gr) = "UCSC"
     names(peaks_gr)=peaks_gr$peakID
-    
+
     lifted_peaks = liftOver(peaks_gr, chain)%>%reduce(min.gapwidth=100L)
 
     names_lifted_peaks =copy(lifted_peaks)%>%unlist()
-    peakIDs= data.table("peakID"=names(names_lifted_peaks))
-    
+    peakIDs = data.table(peakID = names(names_lifted_peaks))
+
     lifted_peaks  = unlist(lifted_peaks)%>%as.data.table()%>%cbind(peakIDs)
     ## merge the 2 dt to get back the logFC and other metadata
     lifted_peaks_final = lifted_peaks[
       peaks_df,on='peakID',nomatch=0
       ][
         ,c('width','strand',paste('i',c(range_keys,'width'),sep='.')):=NULL
-        ]%>%setorderv(range_keys,1)
+        ][
+            seqnames %in% standard_chr
+            ]%>%setorderv(range_keys,1)%>%unique()
     setkeyv(lifted_peaks_final,range_keys)
 
     return(lifted_peaks_final)

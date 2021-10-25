@@ -18,14 +18,10 @@ setwd('/data/projects/punim0595/dvespasiani/Human_Chimpanzee_iPSCs_chromatin_acc
 scripts_dir <- './scripts/'
 source(paste(scripts_dir,'utils.R',sep=''))
 
-genome <- 'panTro5'
-peak_file <- paste('../',genome,"/output/PeakCalling/Files/merged_macs2_default_peaks.narrowPeak",sep='')
+peak_file <- paste('output/final_peak_set/',genome,'_all_orthologous_peaks.txt',sep='')
 
 outfile_dir <- create_dir(da_dir,genome)
 outplot_dir <- create_dir(plot_dir,paste('DA/',genome,sep=''))
-
-#  paste0(result_dir,'/plots/DA/',sep='')
-# peak_outdir = paste0(result_dir,'/DA/peaks/',sep='')
 
 ## list bam
 standard_chr <- paste0("chr", c(1:23,'2A','2B', "X", "Y")) # only use standard chromosomes
@@ -39,9 +35,7 @@ get_bams <- function(species){
 bams <- get_bams(genome)
 
 ## read consensus peak
-peaks <- fread(peak_file,sep='\t',header=F,select=c(1:3),col.names=c(range_keys))%>%makeGRangesFromDataFrame()
-peaks <- peaks%>%reduce(min.gapwidth=50L)%>%as.data.table()
-peaks <- peaks[,peakID:=paste('peak_',1:nrow(peaks),sep='')][,c('width','strand'):=NULL]%>%makeGRangesFromDataFrame(keep.extra.columns=T)
+peaks <- fread(peak_file,sep='\t',header=T)%>%makeGRangesFromDataFrame(keep.extra.columns=T)
 
 ## count reads in peaks (rpkm)
 reads_in_peaks <- regionCounts(bams, peaks,param=param)
@@ -135,7 +129,9 @@ final_results <-  final_results[
             ][
                 peaks_df,on='peakID',nomatch=0
             ][
-        ,c('width','strand'):=NULL
+                ,c('width','strand'):=NULL
+                ][
+                    ,peak_species := ifelse(DA == 'non_da' , 'common',ifelse(DA=='da'& logFC <0,'chimp','human'))
 ] 
 
 write.table(final_results,paste(outfile_dir,'da_results.txt',sep=''),sep='\t',col.names=T,row.names = F,quote=F)
@@ -158,8 +154,8 @@ dev.off()
 ## color points with species they belong to
 volcano_plot <-function(df){
     plot <- ggplot(df) + 
-    geom_point(aes(x = logFC,y =-log10(FDR), col = DA))+
-    scale_color_manual(values = da_palette) + 
+    geom_point(aes(x = logFC,y =-log10(FDR), col = peak_species))+
+    scale_color_manual(values = species_palette) + 
     geom_hline(yintercept=1.3, linetype='dashed', color='black', size=1)
     
     return(plot)

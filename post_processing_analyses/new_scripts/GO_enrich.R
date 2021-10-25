@@ -24,22 +24,24 @@ genome <- 'hg38'
 
 ## get DA peaks
 da_file <- paste(da_dir,genome,'/','da_results.txt',sep='')
-da_results <- fread(da_file,sep='\t',header=T,select=c(range_keys,'DA','peakID','logFC'))
+da_results <- fread(da_file,sep='\t',header=T,select=c(range_keys,'DA','peakID','peak_species'))
 setkeyv(da_results,range_keys)
+da_results <- da_results%>%setorderv('peak_species',1)
 
-da_peaks <- copy(da_results)[DA=='da']
-nonda_peaks <- copy(da_results)[DA=='non_da']
+# da_peaks <- copy(da_results)[DA=='da']
+# nonda_peaks <- copy(da_results)[DA=='non_da']
+all_peaks <- split(da_results,by='peak_species')
 
-all_peaks = list(da_peaks,nonda_peaks)%>%lapply(function(x)x<-x[,c(..range_keys,'peakID')]%>%unique())
-names(all_peaks) = c('da','non_da')
+# all_peaks = list(da_peaks,nonda_peaks)%>%lapply(function(x)x<-x[,c(..range_keys,'peakID')]%>%unique())
+# names(all_peaks) = c('da','non_da')
 
 ## GREAT enrichments
-background <- copy(all_peaks)%>%rbindlist()
+background <- copy(da_results)
 
-get_enrichment = function(test,background){
+get_enrichment = function(gr,bg){
     enrich = submitGreatJob(
-    gr=test,
-    bg=background,
+    gr=gr,
+    bg=bg,
     species = "hg38",
     rule= "oneClosest", 
     adv_oneDistance = 1000,  
@@ -57,22 +59,22 @@ get_enrichment = function(test,background){
 
 go_enrichment <- lapply(all_peaks,function(x)get_enrichment(x,background))
 
-go_tables <- list(go_enrichment[[1]][[1]],go_enrichment[[2]][[1]])
-names(go_tables) = c('da','non_da')
+go_tables <- list(go_enrichment[[1]][[1]],go_enrichment[[2]][[1]],go_enrichment[[3]][[1]])
+names(go_tables) = names(go_enrichment)
 
 write.xlsx(go_tables,paste(outfile_dir,'GO_enrich_terms_da_non_da.xlsx',sep=''),append=T,overwrite=T)
 
 ## plot go bp first 30 terms for simplicity of visualization
-go_bp <- Map(mutate,go_tables,peak_set = as.factor(names(go_tables)))
-go_bp <- lapply(go_bp,function(x) x=x[1:15,c(1,2,13,14)])%>%rbindlist()
+go_bp <- Map(mutate,go_tables,peak_species = as.factor(names(go_tables)))
+go_bp <- lapply(go_bp,function(x) x=x[1:15,c(1,2,13,14)])%>%rbindlist()%>%na.omit()
 go_bp <- go_bp[
   ,log10_adj_p := -log10(Hyper_Adjp_BH)
-]%>%setorderv('log10_adj_p',1)%>%setorderv('peak_set',1)
+]%>%setorderv('log10_adj_p',1)%>%setorderv('peak_species',1)
 
 go_enrichment_plot = function(df){
-  p <- ggplot(df, aes(x=factor(df$name,levels=df$name), y=log10_adj_p,fill=peak_set)) +
+  p <- ggplot(df, aes(x=factor(df$name,levels=df$name), y=log10_adj_p,fill=peak_species)) +
   geom_bar(stat = 'identity',position = 'dodge',col='black')+
-  scale_fill_manual(values=da_palette)+
+  scale_fill_manual(values=species_palette)+
   xlab(" ") +ylab("\n -Log10 (P adj.) \n ") +
   theme(
     legend.position='bottom',
@@ -92,14 +94,14 @@ go_enrichment_plot = function(df){
   
 }
 
-pdf(paste(outplot_dir,'da_nonda_go.pdf',sep=''),width=10,height = 15)
+pdf(paste(outplot_dir,'go_barplot.pdf',sep=''),width=10,height = 15)
 go_enrichment_plot(go_bp)
 dev.off()
 
 ## now check the target genes
-target_genes = list(go_enrichment[[1]][[2]],go_enrichment[[2]][[2]])
+target_genes = list(go_enrichment[[1]][[2]],go_enrichment[[2]][[2]],go_enrichment[[3]][[2]])
 target_genes = purrr::map2(target_genes,all_peaks,function(x,y)x[y,on=range_keys,nomatch=0])
-names(target_genes)=c('da','non_da')
+names(target_genes)=species_names
 
 ## get number and % peaks with target genes
 numb_peaks_w_gene <- copy(target_genes)%>%lapply(function(x)x=x[,c(..range_keys)]%>%unique()%>%nrow())
@@ -118,7 +120,7 @@ library(VennDiagram)
 genes <- copy(target_genes)%>%lapply(function(x)x=x[,gene]%>%unique())
 venn.diagram(
     x = genes,
-    category.names = c("da", "non_da"),
+    category.names = species_names,
     filename = paste(outplot_dir,'target_genes_venn.png',sep=''),
     output = TRUE ,
     imagetype="png" ,
@@ -126,25 +128,26 @@ venn.diagram(
     width = 700 , 
     resolution = 400,
     lwd = 1,
-    col=da_palette,
-    fill = c(alpha(da_palette[[1]],0.3), alpha(da_palette[[2]],0.3)),
+    col=species_palette,
+    fill = c(alpha(species_palette[[1]],0.3), alpha(species_palette[[2]],0.3),alpha(species_palette[[3]],0.3)),
     cex = 0.5,
     fontfamily = "sans",
     cat.cex = 0.3,
     cat.default.pos = "outer",
-    cat.pos = c(-27, 27),
-    cat.dist = c(0.055, 0.055),
+    cat.pos = c(-27, 27, 135),
+    cat.dist = c(0.055, 0.055, 0.085),
     cat.fontfamily = "sans",
-    cat.col = da_palette
+    cat.col = species_palette
 )
+
 
 ##  plot distance between peak and target genes
 target_genes <- lapply(target_genes,function(x)x=x[
     ,log10_abs_dist:= log10(abs(distTSS)+1)
     ]
-)
+)%>%rbindlist()
 
-target_genes <- Map(mutate,target_genes,peak_type=names(target_genes))%>%rbindlist()
+# target_genes <- Map(mutate,target_genes,peak_type=names(target_genes))%>%rbindlist()
 
 # pdf(paste(plot_dir,'dist_peak_target_genes.pdf',sep=''),width=10,height = 7)
 # ggplot(target_genes,aes(x=peak_type,y=log10_abs_dist,fill=peak_type))+
@@ -162,8 +165,8 @@ target_genes <- Map(mutate,target_genes,peak_type=names(target_genes))%>%rbindli
 # dev.off()
 
 pdf(paste(outplot_dir,'dist_peak_target_genes.pdf',sep=''),width=10,height = 7)
-ggplot(target_genes, aes(x=log10_abs_dist,fill=peak_type)) +
-    geom_density(alpha=0.5)+scale_fill_manual(values=da_palette)
+ggplot(target_genes, aes(x=log10_abs_dist,fill=peak_species)) +
+    geom_density(alpha=0.5)+scale_fill_manual(values=species_palette)
 dev.off()
 
 

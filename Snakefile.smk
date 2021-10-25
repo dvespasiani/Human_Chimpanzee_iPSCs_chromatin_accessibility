@@ -89,11 +89,11 @@ rule all:
             expand(peakcall_outdir + "{augmented_samples}_fc_signal.bedgraph",augmented_samples=augmented_samples),
             expand(peakcall_outdir + "{augmented_samples}_fc_signal_sorted.bedgraph",augmented_samples=augmented_samples),
             expand(peakcall_outdir + "{augmented_samples}_fc_signal.bigwig",augmented_samples=augmented_samples),
-            expand(peakcall_outdir + "{augmented_samples}_ppois_sval",augmented_samples=augmented_samples),
-            expand(peakcall_outdir + "{augmented_samples}_macs2_ppois.bdg",augmented_samples=augmented_samples),
-            expand(peakcall_outdir + "{augmented_samples}_ppois_signal.bedgraph",augmented_samples=augmented_samples),
-            expand(peakcall_outdir + "{augmented_samples}_ppois_signal_sorted.bedgraph",augmented_samples=augmented_samples),
-            expand(peakcall_outdir + "{augmented_samples}_ppois_signal.bigwig",augmented_samples=augmented_samples),
+            # expand(peakcall_outdir + "{augmented_samples}_ppois_sval",augmented_samples=augmented_samples),
+            # expand(peakcall_outdir + "{augmented_samples}_macs2_ppois.bdg",augmented_samples=augmented_samples),
+            # expand(peakcall_outdir + "{augmented_samples}_ppois_signal.bedgraph",augmented_samples=augmented_samples),
+            # expand(peakcall_outdir + "{augmented_samples}_ppois_signal_sorted.bedgraph",augmented_samples=augmented_samples),
+            # expand(peakcall_outdir + "{augmented_samples}_ppois_signal.bigwig",augmented_samples=augmented_samples),
             expand(peakcall_qcdir + "{augmented_samples}_default.frip.txt",augmented_samples=augmented_samples),
             # "output/PeakCalling/ConsensusPeaks/consensus_peak.bed.gz"
 
@@ -107,14 +107,14 @@ rule all:
       # expand("output/ENCODE_CC/QCs/{sample}_filt_25Mreads.SE.cc.plot.pdf",sample=sample),
 
 ## Deeptools 
-            expand(deeptools_outdir + "{sample}.SeqDepthNorm.bw",sample=sample),
-            deeptools_outdir + "Samples_plotCoverage.png",
-            deeptools_outdir + "Samples_plotfingerprint.png",
-            deeptools_outdir + "multiBAM_fingerprint_metrics.txt",
-            deeptools_outdir + "multiBAM_fingerprint_rawcounts.txt",
-            expand(deeptools_outdir + "{sample}_GC_content.txt",sample=sample),
-            expand(deeptools_outdir + "{sample}_plot_GC_content.png",sample=sample),
-            deeptools_outdir + "Summary.npz",
-            deeptools_outdir + "Readcounts.txt",
-            deeptools_outdir + "PearsonCor_multibamsum.png",
-            deeptools_outdir + "PearsonCor_multibamsum_matrix.txt"
+            # expand(deeptools_outdir + "{sample}.SeqDepthNorm.bw",sample=sample),
+            # deeptools_outdir + "Samples_plotCoverage.png",
+            # deeptools_outdir + "Samples_plotfingerprint.png",
+            # deeptools_outdir + "multiBAM_fingerprint_metrics.txt",
+            # deeptools_outdir + "multiBAM_fingerprint_rawcounts.txt",
+            # expand(deeptools_outdir + "{sample}_GC_content.txt",sample=sample),
+            # expand(deeptools_outdir + "{sample}_plot_GC_content.png",sample=sample),
+            # deeptools_outdir + "Summary.npz",
+            # deeptools_outdir + "Readcounts.txt",
+            # deeptools_outdir + "PearsonCor_multibamsum.png",
+            # deeptools_outdir + "PearsonCor_multibamsum_matrix.txt"

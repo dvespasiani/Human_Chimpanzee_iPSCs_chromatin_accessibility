@@ -3,20 +3,29 @@
 ## unfortunately I cannot yet run deepbind on the cluster so i have to do it locally (no big deal is v quick)
 ## another thing is that I modified the example.ids file in order to contain only the  D00328.003 # CTCF (SELEX) model
 
-deepbind_dir='/Users/dvespasiani/deepbind'
-ctcf_seq_dir='/Users/dvespasiani/Desktop/atac_plots/ctcf_peak_sequences'
-outdir='/Users/dvespasiani/Desktop/atac_plots/deepbind_predictions'
+wd='/Users/davidevespasiani'
+deepbind_dir="${wd}/deepbind"
+input_dir="${wd}/Desktop/Projects/human_chimp_atac/ctcf_peaks"
+output_dir="${wd}/Desktop/Projects/human_chimp_atac/deepbind_predictions"
 
-## create dirs
-if [ ! -d "$outdir" ]; then
-  mkdir -p "$outdir";
+if [ ! -d "$output_dir" ]; then
+   mkdir -p "$output_dir";
 fi
+
 
 cd "$deepbind_dir"
 
-for seq in "$ctcf_seq_dir"/*sequences.txt ; do
-deepbind_output="$outdir/$(echo $(basename $seq)| cut -f 1 -d '_')"
-
-    ./deepbind  --echo  example.ids < $seq > "${deepbind_output}_ctcf_affinity_predictions.txt"
-
+for f in "$input_dir"/*ctcf_peaks.txt ; do
+  file_basename=$(echo $(basename $f)| cut -f 1 -d '_')
+  awk '{print $3}' $f | tail -n +2 > ${file_basename}_sequences.txt
+  awk '{print $1}' $f >  ${file_basename}_peakIDs.txt
+  deepbind_output="$output_dir/${file_basename}"
+  ./deepbind  --echo  example.ids < ${file_basename}_sequences.txt > "${deepbind_output}_tmp.txt"
+  paste -d '\t' ${file_basename}_peakIDs.txt "${deepbind_output}_tmp.txt" > "${deepbind_output}_ctcf_affinity_predictions.txt"
+  rm "${deepbind_output}_tmp.txt"
+  rm ${file_basename}_sequences.txt
+  rm ${file_basename}_peakIDs.txt
 done
+
+
+

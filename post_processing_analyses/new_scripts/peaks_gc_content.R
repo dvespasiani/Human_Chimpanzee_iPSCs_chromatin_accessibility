@@ -18,18 +18,16 @@ scripts_dir <- './scripts/'
 source(paste(scripts_dir,'utils.R',sep=''))
 
 outplot_dir <- create_dir(plot_dir,'GC')
-genome <- 'hg38'
 
 ## get DA peaks
 da_file <- paste(da_dir,genome,'/da_results.txt',sep='')
-da_results <- fread(da_file,sep='\t',header=T,select=c(range_keys,'DA','peakID','logFC'))
-setkeyv(da_results,range_keys)
+da_results <- fread(da_file,sep='\t',header=T,select=c(range_keys,'DA','peakID','peak_species'))%>%setorderv('peak_species',1)
 
 ##--------------------------------------------
 ## First calculate CpG content of these peaks
 ##--------------------------------------------
 ## expectations: DA peaks should have higher CpG content than non-DA peaks as they are enriched for TssA 
-peaks_cpg <- copy(da_results)%>%split(by='DA')%>%lapply(
+peaks_cpg <- copy(da_results)%>%split(by='peak_species')%>%lapply(
   function(x){
     cpg <- copy(x)%>%makeGRangesFromDataFrame()%>%Repitools::cpgDensityCalc(organism=Hsapiens)
     x<-x[,cpg_content:=cpg]
@@ -44,19 +42,19 @@ peaks_cpg <- lapply(peaks_cpg,function(x)x<-x[!cpg_content>100])
 # all_peaks = list(chimp_peaks_pantro5,common_peaks,human_peaks_hg38)
 
 ## plot CpG densities
-all_peaks_cpg = copy(peaks_cpg)%>%lapply(function(x)x=x[,c('cpg_content','DA')])%>%rbindlist()
+all_peaks_cpg = copy(peaks_cpg)%>%lapply(function(x)x=x[,c('cpg_content','peak_species')])%>%rbindlist()
 
 pdf(paste0(outplot_dir,'peaks_CpG_content.pdf',sep=''),width = 7, height = 7)
-ggplot(all_peaks_cpg,aes(x=DA,y=cpg_content,fill=DA))+
+ggplot(all_peaks_cpg,aes(x=peak_species,y=cpg_content,fill=peak_species))+
 geom_violin(trim=T,scale = "width")+
 geom_boxplot(width=.1, position =  position_dodge(width = 0.4),outlier.size=0.2,fill='white',notch=T)+
-scale_fill_manual(values=da_palette)+
+scale_fill_manual(values=species_palette)+
 xlab('')+ylab('Raw count CpG')+
 stat_compare_means(
   method = "wilcox.test",
   label.y = 100,
   size=5,
-  ref.group='non_da'
+  ref.group='common'
   )+
 theme(
   legend.key = element_rect(fill = "white", colour = "black"),
@@ -67,7 +65,7 @@ dev.off()
 ##-------------------------
 ## Now look at GC content
 ##-------------------------
-peaks_cg <- copy(da_results)%>%split(by='DA')%>%lapply(
+peaks_cg <- copy(da_results)%>%split(by='peak_species')%>%lapply(
   function(x) 
   x<-x[
     ,sequence:=as.character(getSeq(Hsapiens, seqnames,start, end))
@@ -81,19 +79,19 @@ peaks_cg <- copy(da_results)%>%split(by='DA')%>%lapply(
 )
 
 ## plot GC content
-all_peaks_gc <- copy(peaks_cg)%>%rbindlist()%>%dplyr::select(c('gc_content','DA'))
+all_peaks_gc <- copy(peaks_cg)%>%rbindlist()%>%dplyr::select(c('gc_content','peak_species'))
 
 pdf(paste0(outplot_dir,'peaks_GC_content.pdf',sep=''),width = 7, height = 7)
-ggplot(all_peaks_gc,aes(x=DA,y=gc_content,fill=DA))+
+ggplot(all_peaks_gc,aes(x=peak_species,y=gc_content,fill=peak_species))+
 geom_violin(trim=T,scale = "width")+
 geom_boxplot(width=.1, position =  position_dodge(width = 0.4),outlier.size=0.2,fill='white',notch=T)+
-scale_fill_manual(values=da_palette)+
+scale_fill_manual(values=species_palette)+
 xlab('')+ylab('Fraction GC over peak width')+
 stat_compare_means(
   method = "wilcox.test",
   label.y = 1,
   size=5,
-  ref.group='non_da'
+  ref.group='common'
   )+
 theme(
   legend.key = element_rect(fill = "white", colour = "black"),

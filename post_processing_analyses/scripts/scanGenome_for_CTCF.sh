@@ -9,21 +9,22 @@ if [ ! -d "$ctcf" ]; then
   mkdir -p "$genome_wide_ctcf" && mkdir -p "$target_seq_ctcf";
 fi
 
-## declare the array first
+## loop through array of genome assemblies
 declare -a genomes=('hg38' 'panTro5')
 
-## then loop through it. remember the [@]!!
-for genome in "${genomes[@]}"; do
-    scanMotifGenomeWide.pl "$motif_file" "$genome" -bed -keepAll -mask > "$genome_wide_ctcf/${genome}_ctcf.bed"
+for g in "${genomes[@]}"; do
+    scanMotifGenomeWide.pl "$motif_file" "$g" -bed -keepAll -mask > "$genome_wide_ctcf/${g}_ctcf.bed"
 done
  
 ## Merge overlapping ranges
 cd "$genome_wide_ctcf"
 module load bedtools/2.27.1 
 
-bedtools merge -i hg38_ctcf.bed > hg38_ctcf_merged.bed
-bedtools merge -i panTro5_ctcf.bed > panTro5_ctcf_merged.bed
-
+for g in "${genomes[@]}"; do
+  bedtools merge -i ${g}_ctcf.bed > ${g}_ctcf_merged.bed
+done
+ 
+ 
 rm *_ctcf.bed
 
 ## Find CTCFs motif only in the target fasta files

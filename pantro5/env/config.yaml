@@ -1,6 +1,6 @@
 description: panTro5 snakemake configuration file
-
-samples:
+assembly: panTro5
+samples: &samples
        - C3647 
        - C3649
        - C3651
@@ -15,12 +15,17 @@ samples:
        - HUtt60
        # merged: *file ## this is the 7th file which is used for consensus peak call
 
+merged_sample: &merged_sample 'merged_sample' ## this will combine all the 12 samples into a 13th file
+augmented_samples: 
+       - [*merged_sample]
+       - *samples
+
 CLUSTER: 'env/cluster.yaml'
 
 index_genome_dir: "data/Index_genome/panTro5"
 genome_size: 2792339170
 chrom_sizes: 'data/Index_genome/panTro5.chrom.sizes'
-2bit_index: "data/Index_genome/panTro5.2bit" 
+genome2bit_index: "data/Index_genome/panTro5.2bit" 
 blacklist: "../data/ENCODE_blacklisted/panTro5_blacklist_v2.bed"
 
 ## tmp dir for Deeptools

@@ -15,7 +15,8 @@ rule peakCalling:
   group: 
     main_group
   params:
-    name="{augmented_samples}_macs2_default",
+    name = "{augmented_samples}_macs2_default",
+    outdir = peakcall_outdir,
     fragment_size = 300,
     shift = 100,
     genome_size = genome_size,
@@ -25,14 +26,9 @@ rule peakCalling:
   shell:
     "macs2 callpeak --format BAMPE --treatment {input.bam} \
     --keep-dup all \
-    --outdir output/PeakCalling/Files/ \
-    --name {params.name} \
-    --shift {params.shift} \
-    --nomodel -B --SPMR \
-    --extsize {params.fragment_size} \
-    --pvalue {params.pval_thresh} \
-    --call-summits \
-    -g {params.genome_size} 2> {log}"
+    --outdir {params.outdir} --name {params.name} --shift {params.shift} \
+    --nomodel -B --SPMR --extsize {params.fragment_size} \
+    --pvalue {params.pval_thresh} --call-summits -g {params.genome_size} 2> {log}"
 
 ##--------------------------------------------
 ## Remove peaks within black listed regions
