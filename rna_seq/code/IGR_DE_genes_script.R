@@ -43,7 +43,7 @@ names(ipsc.counts)[1] <- "EnsemblID"
 dim(ipsc.counts)
 # [1] 42172    13
 
-exon.lengths = fread('orthoexon_files/metaOrthoExon_hg38_panTro5_ensembl86_0.97_ortho_FALSE_pc.txt',header=T)
+exon.lengths <- fread('orthoexon_files/metaOrthoExon_hg38_panTro5_ensembl86_0.97_ortho_FALSE_pc.txt',header=T)
 
 gene.lengths <- ddply(exon.lengths, "gene", function(x) colSums(x[,c(6,11)]))
 gene.lengths$diff <- abs(gene.lengths$widthHs - gene.lengths$widthpanTro5)
@@ -123,7 +123,7 @@ length(genes.to.discard)
 
 ipsc.counts <- ipsc.counts[!ipsc.counts$EnsemblID %in% genes.to.discard]
 dim(ipsc.counts)
-# [1] 34465    15
+# [1] 34465    13
 
 #prepare meta information and plot parameters:
 ipsc.counts.names <- colnames(ipsc.counts[,-1])
@@ -145,8 +145,8 @@ samples.meta$cex <- 1.5
 	rownames(samples.meta) <- samples.meta$line
 
 # Now drop all the samples you don't want, because it's a real pain to drop them above since he code is kind of suspect:
-ipsc.counts <- ipsc.counts[,colnames(ipsc.counts) != "C40210A" & colnames(ipsc.counts) != "H18489"]
-samples.meta <- samples.meta[rownames(samples.meta) != "C40210A" & rownames(samples.meta) != "H18489",]
+# ipsc.counts <- ipsc.counts[,colnames(ipsc.counts) != "C40210" & colnames(ipsc.counts) != "H18489"]
+# samples.meta <- samples.meta[rownames(samples.meta) != "C40210" & rownames(samples.meta) != "H18489",]
 
 save(samples.meta, file="samples_meta_expression_final.Rda")
 
@@ -224,7 +224,7 @@ dev.off()
 #filter on 4 or more observations of one read per species, not throughout. 
 ipsc.genes.dge.filtered <- ipsc.genes.dge[rowSums(cpm.norm[,1:6] > 1) >= 3 | rowSums(cpm.norm[,7:12] > 1) >= 3 , ] 
 dim(ipsc.genes.dge.filtered)
-# [1] 12674    12
+# [1] 13094    12
 pdf(paste(plotdir,"cpm.filtered.density_ipsc_final_no_ribo.pdf",sep=''))
 plotDensities(ipsc.genes.dge.filtered, group=samples.meta$species)
 dev.off()

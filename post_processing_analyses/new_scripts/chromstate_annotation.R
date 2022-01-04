@@ -31,7 +31,13 @@ peak_annotation <- foverlaps(da_results,ipsc_chromstate,type='any')[
   ,c(range_keys[-1]):=NULL
 ]%>%na.omit()%>%
   setnames(old=c('i.start','i.end'),new=c(range_keys[-1]))
-peak_annotation <- peak_annotation[,peak_species:=ifelse(peak_species == 'common','common','species_specific')]
+  
+peak_annotation <- peak_annotation[
+    ,pleiotropy:=.N,by=.(peakID,chrom_state)
+    ][
+      ,.SD[which.max(abs(pleiotropy))], by=.(peakID)
+]
+
 ##-------------------------------------------------------
 ## Calculate odds ratio of 
 ## DA(species-specific) vs non-DA (common) windows(peaks)
@@ -39,43 +45,21 @@ peak_annotation <- peak_annotation[,peak_species:=ifelse(peak_species == 'common
 peak_counts_chromstate <- copy(peak_annotation)[
     ,cell_type:=NULL
 ]%>%unique()
+
 peak_counts_chromstate <- peak_counts_chromstate[
-      ,numb_peaks_chromstate:=.N,by=.(chrom_state,peak_species)
+      ,numb_peaks_chromstate:=.N,by=.(chrom_state,DA)
       ][
-        ,numb_peaks:=.N,by=.(peak_species)
+        ,numb_peaks:=.N,by=.(DA)
         ][
-            ,c('peak_species','chrom_state','numb_peaks_chromstate','numb_peaks')
+            ,c('DA','chrom_state','numb_peaks_chromstate','numb_peaks')
 ]%>%unique()
 
+common_peaks <- copy(peak_counts_chromstate)[DA =='non_da'] 
+species_specific_peaks <- copy(peak_counts_chromstate)[DA =='da'] 
 
-common_peaks <-copy(peak_counts_chromstate)[peak_species =='common'] 
-species_specific_peaks <-copy(peak_counts_chromstate)[peak_species !='common'] 
-
-# da_peaks_counts <- copy(peak_counts_chromstate)[DA =='da'] 
-# nonda_peaks_counts <- copy(peak_counts_chromstate)[DA =='non_da'] 
-
-calculate_or <- function(peaks_oi,peaks_noi,merging_keys){
-  peaksoi_vs_peaksnoi_or <- merge(peaks_oi,peaks_noi,by=c(merging_keys))%>%
-  dplyr::select(c(contains('numb'),contains(all_of(merging_keys))))
-
-  fisher_test <- copy(peaksoi_vs_peaksnoi_or)%>%split(by=c(merging_keys))%>%
-  lapply(
-    function(x){
-    x <- x[,c(merging_keys):=NULL]%>%as.numeric()%>%matrix(nrow=2,byrow=T)%>%fisher.test()
-    x <- data.table(
-        'p'=x$p.value,
-        'odds_ratio'=x$estimate,
-        'lower_ci'=x$conf.int[[1]],
-        'upper_ci'=x$conf.int[[2]]
-        )
-    }
-  )
-  or_results <- Map(mutate,fisher_test,elements=names(fisher_test))%>%rbindlist()%>%adjust_pvalues()
-  return(or_results)
-}
-
-# da_vs_nonda_or <- calculate_or(da_peaks_counts,nonda_peaks_counts,'chrom_state')
 peaks_or <- calculate_or(common_peaks,species_specific_peaks,'chrom_state')
+
+
 ## plot the results
 ## get chromHMM colors
 chromHMM_colors <- nihroadmap_colors(peaks_or,'elements')
@@ -101,33 +85,58 @@ plot_or <- function(or,ylab){
 }
 
 pdf(paste(outplot_dir,'OR_common_vs_species_specific_peaks_chromstate.pdf',sep=''),width=8,height = 5)
-plot_or(or = peaks_or,ylab = 'odds ratio \n common vs species-specific peaks')
+plot_or(or = peaks_or,ylab = 'odds ratio \n non da vs da peaks')
 dev.off()
 
-# ## hypothesis: enrichment in het because chimp ipscs are > primed than humans 
-# ## check whether this enrichment is caused by peaks that are not accessible in humans 
-# species_accessibility <- copy(peak_annotation)[
-#   DA=='da'
-#   ][
-#     ,species:=ifelse(logFC<0,'chimp','human')
-#     ][
-#       ,c('cell_type','logFC'):=NULL
-# ]%>%unique()
+## permutation
+calculate_or_permutations <- function(peaks){
+  df <- copy(peaks)
+  df <- df[
+    ,numb_peaks_chromstate:=.N,by=.(chrom_state,DA)
+    ][
+        ,numb_peaks:=.N,by=.(DA)
+        ][
+            ,c('DA','chrom_state','numb_peaks_chromstate','numb_peaks')
+            ]%>%unique()
+  non_da_peaks <- copy(df)[DA =='non_da'] 
+  da_peaks <- copy(df)[DA =='da'] 
+  odds_ratio_df <- calculate_or(non_da_peaks,da_peaks,'chrom_state')
+  odds_ratio_vector <- odds_ratio_df$odds_ratio
+  names(odds_ratio_vector) = odds_ratio_df$elements
+  return(odds_ratio_vector)
+}
 
-# species_accessibility <- species_accessibility[
-#       ,numb_peaks_chromstate:=.N,by=.(chrom_state,species)
-#       ][
-#         ,numb_peaks:=.N,by=.(species)
-#         ][
-#             ,c('species','chrom_state','numb_peaks_chromstate','numb_peaks')
-# ]%>%unique()
+score_distribution = list()
 
-# chimp_peaks_counts <- copy(species_accessibility)[species =='chimp'] 
-# human_peaks_counts <- copy(species_accessibility)[species =='human'] 
+for(i in 1:10000){
+    new_da_col = sample(peak_annotation$DA, length(peak_annotation$DA), replace = F)
+    new_peak_annot_df <- copy(peak_annotation)[,DA:=new_da_col]
+    permuted_odds_ratio <- calculate_or_permutations(new_peak_annot_df)
+    dat <- data.table(chrom_state = names(permuted_odds_ratio), odds_ratio = permuted_odds_ratio)
+    score_distribution[[i]] <- dat # add it to your list
+    
+}
+score_distribution =  rbindlist(score_distribution)%>%split(by='chrom_state')
 
-# human_vs_chimp_or <- calculate_or(human_peaks_counts,chimp_peaks_counts,'chrom_state')
+observed_values = copy(peaks_or)[,c('odds_ratio','elements')]%>%split(by='elements')
 
-# pdf(paste(outplot_dir,'OR_human_vs_chimp_da_peaks_chromstate.pdf',sep=''),width=8,height = 5)
-# plot_or(or = human_vs_chimp_or,ylab = 'odds ratio \n humans vs chimp DA peaks')
-# dev.off()
+permutation_results <- purrr::map2(observed_values,score_distribution,function(x,y){
+   zscore <- (x$odds_ratio-mean(y$odds_ratio))/sd(y$odds_ratio)
+   pvalue <- 2*pnorm(q=abs(zscore), lower.tail=FALSE)
+   return <- copy(y)[,zscore:=zscore][,pval:=pvalue][,observed_value:=x$odds_ratio]
+   return(return)
+})
 
+permutation_results <- Map(mutate,permutation_results,chrom_state = names(permutation_results))%>%rbindlist()
+
+names(chrom_state_colors) = chrom_states
+
+pdf(paste(outplot_dir,'permuted_odds_ratios.pdf',sep=''),width=10,height = 7)
+ggplot(permutation_results,aes(x=odds_ratio,col=chrom_state))+
+scale_colour_manual(values=chrom_state_colors)+
+geom_histogram(binwidth=0.005)+
+xlab('permutation odds ratio')+ 
+geom_vline(data = permutation_results, aes(xintercept=observed_value),linetype='dashed',color='red')+
+facet_wrap(chrom_state~.,scale='free_y',ncol=3)+
+theme_bw()+theme(legend.position='none')
+dev.off()

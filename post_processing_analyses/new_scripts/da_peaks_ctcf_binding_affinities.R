@@ -14,7 +14,6 @@ library(ggpubr)
 library(phastCons7way.UCSC.hg38)
 library(GenomicScores)
 
-
 options(width=150)
 setwd('/data/projects/punim0595/dvespasiani/Human_Chimpanzee_iPSCs_chromatin_accessibility/post_processing_analyses')
 
@@ -143,7 +142,7 @@ all_tads <- lapply(all_tads,function(x){
 names(all_tads) = species_names
 
 ## define TAD boundaries
-boundary =  1000000
+boundary =  300000
 boundaries = copy(all_tads)%>%
 lapply(
     function(x)x=x[

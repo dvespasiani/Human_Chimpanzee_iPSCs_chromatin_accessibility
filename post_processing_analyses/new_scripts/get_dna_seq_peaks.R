@@ -24,7 +24,7 @@ output_dir <- create_dir(outdir,'sequences')
 
 ## get DA peaks
 da_file <- paste(da_dir,genome,'/da_results.txt',sep='')
-da_results <- fread(da_file,sep='\t',header=T,select=c(range_keys,'DA','peakID','peak_species'))%>%split(by='peak_species')
+da_results <- fread(da_file,sep='\t',header=T,select=c(range_keys,'DA','peakID','peak_species'))%>%split(by='DA')
 
 ## get DNA sequences 
 dna_sequences <- lapply(da_results,function(x){ 

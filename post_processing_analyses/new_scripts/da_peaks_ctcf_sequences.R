@@ -29,18 +29,17 @@ ctcf_outdir <- create_dir(ctcf_dir,'ctcf_peaks')
 genome_wide_ctcf_file <- dir(paste(ctcf_dir,'genome_wide_ctcf',sep=''),recursive=F,full.names=T,pattern=genome)
 genome_wide_ctcf <- fread(genome_wide_ctcf,sep='\t',header=F,col.names=range_keys)[seqnames%in%standard_chr]
 
-
 ## read peaks that are predicted to have ctcf motifs 
 ctcf_matches <- list.files(paste(ctcf_dir,'target_sequences/',sep=''),recursive=F,full.names=T,pattern=genome)%>%
     lapply(function(x)fread(x,sep='\t',header=T)[,c(1:3)]%>%setnames(old=c('FASTA ID','Sequence'),new=c('peakID','sequence')))
-
-names(ctcf_matches) = species_names
+ctcf_matches <- Map(mutate,ctcf_matches,peak_species =species_names)%>%rbindlist()
+ctcf_matches <- ctcf_matches[,DA:=ifelse(peak_species=='common','non_da','da')]%>%split(by='DA')
 
 ## read peaks to get genomic locations of ctcf bs
 da_file <- paste(da_dir,genome,'/','da_results.txt',sep='')
 all_peaks <- fread(da_file,sep='\t',header=T,select=c(range_keys,'logFC','DA','peakID','peak_species'))
 setkeyv(all_peaks,range_keys)
-all_peaks <- all_peaks%>%setorderv('peak_species',1)%>%split(by='peak_species')
+all_peaks <- all_peaks%>%setorderv('DA',1)%>%split(by='DA')
  
 peaks_with_ctcf = purrr::map2(ctcf_matches,all_peaks,function(x,y)x[y,on='peakID',nomatch=0])
 
@@ -53,13 +52,13 @@ numb_all_peaks = lapply(all_peaks,function(x)x[,c(..range_keys)]%>%unique()%>%nr
 
 prop_peaks_w_ctcf = purrr::map2(numb_peaks_w_ctcf,numb_all_peaks,`/`)
 prop_peaks_w_ctcf = lapply(prop_peaks_w_ctcf,function(x)data.table(prop=x)[,peaktype:='w_ctcf'])
-prop_peaks_w_ctcf = Map(mutate,prop_peaks_w_ctcf,species=species_names)
+prop_peaks_w_ctcf = Map(mutate,prop_peaks_w_ctcf,DA=names(prop_peaks_w_ctcf))
 one_minus_prop_peaks_w_ctcf = copy(prop_peaks_w_ctcf)%>%lapply(function(x)x=x[,prop:=1-prop][,peaktype:='no_ctcf'])
 
 final_prop_peaks_ctcf = purrr::map2(prop_peaks_w_ctcf,one_minus_prop_peaks_w_ctcf,rbind)%>%rbindlist()
 
 pdf(paste0(outplot_dir,'prop_peaks_w_ctcf.pdf',sep=''),width = 7, height = 7)
-ggplot(final_prop_peaks_ctcf,aes(x=species,y=prop,fill=peaktype))+
+ggplot(final_prop_peaks_ctcf,aes(x=DA,y=prop,fill=DA))+
 geom_bar(stat='identity')+ 
 xlab(' ')+ylab('Proportion peaks')+
 theme(

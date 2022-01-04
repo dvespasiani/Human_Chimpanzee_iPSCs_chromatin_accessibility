@@ -1,4 +1,5 @@
 ## directories 
+tads_dir <-  './output/TADs/'
 da_dir <- './output/DA/'
 plot_dir <- './output/plots/'
 outdir <- './output/'
@@ -74,6 +75,42 @@ export_file <- function(directory,genome,filename){
     dir.create(dir, showWarnings = FALSE)
     file <- paste(dir,'/',genome,'_',filename,sep='')
     return(file)
+}
+
+calculate_or <- function(peaks_oi,peaks_noi,merging_keys){
+  peaksoi_vs_peaksnoi_or <- merge(peaks_oi,peaks_noi,by=c(merging_keys))%>%
+  dplyr::select(c(contains('numb'),contains(all_of(merging_keys))))
+
+  fisher_test <- copy(peaksoi_vs_peaksnoi_or)%>%split(by=c(merging_keys))%>%
+  lapply(
+    function(x){
+    x <- x[,c(merging_keys):=NULL]%>%as.numeric()%>%matrix(nrow=2,byrow=T)%>%fisher.test()
+    x <- data.table(
+        'p'=x$p.value,
+        'odds_ratio'=x$estimate,
+        'lower_ci'=x$conf.int[[1]],
+        'upper_ci'=x$conf.int[[2]]
+        )
+    }
+  )
+  or_results <- Map(mutate,fisher_test,elements=names(fisher_test))%>%rbindlist()%>%adjust_pvalues()
+  return(or_results)
+}
+
+## empirical permutations
+permute_data <- function(metric, peak_type, n=10000){
+  score_distribution = c()
+  observed_value = diff(by(metric,peak_type,mean))
+  for(i in 1:n){
+      score_distribution[i]=diff(by(metric, sample(peak_type, length(peak_type), replace = F), mean))
+  }
+  df_score_distribution = data.table(permuted_scores=score_distribution)
+  zscore = (observed_value-mean(score_distribution))/sd(score_distribution)
+  pvalue = 2*pnorm(q=abs(zscore), lower.tail=FALSE)
+  df_stat =  data.table(zscore = zscore,pval=pvalue)
+  return = list(observed_value,df_score_distribution,df_stat)
+  names(return) = c('observed_value','permuted_scores','stat_results')
+  return(return)
 }
 
 ## peaks DA/NON-DA

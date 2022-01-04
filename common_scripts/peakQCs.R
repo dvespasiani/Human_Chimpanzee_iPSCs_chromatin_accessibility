@@ -8,78 +8,30 @@ library(dplyr)
 library(ggplot2)
 library(ggpubr)
 
-setwd('/data/projects/punim0595/dvespasiani/Human_Chimpanzee_iPSCs_chromatin_accessibility/')
+setwd('/data/projects/punim0595/dvespasiani/Human_Chimpanzee_iPSCs_chromatin_accessibility/post_processing_analyses')
 
-peakdir = '/output/PeakCalling/Files/'
-plot_dir = './post_processing_analyses/output/plots/'
-range_cols = c('seqnames','start','end')
+scripts_dir <- './scripts/'
+source(paste(scripts_dir,'utils.R',sep=''))
 
-read_peaks = function(dir) {
-    files =list.files(paste(dir,peakdir,sep=''),full.names=T, recursive=F,pattern='filtered')%>%
-    lapply(
-        function(x)fread(x,sep='\t',header=F,select=c(1:3),col.names=range_cols)[
+peakdir <- paste('../',genome,'/output/PeakCalling/Files',sep='')
+outplot_dir <- create_dir(plot_dir,'atac_seq_qc')
+
+peak_files <- list.files(peakdir,full.names=T, recursive=F,pattern="^H.*narrowPeak$|C.*narrowPeak$")
+
+peaks <- lapply(peak_files,function(x)
+    x<-fread(x,sep='\t',header=F,select=c(1:3),col.names=range_keys)[
             ,width:=end-start
         ]
-    )
+)
+names(peaks) = samples_names
+peaks <- Map(mutate,peaks,samples=samples_names)%>%rbindlist()
 
-    names(files)=list.files(paste(dir,peakdir,sep=''),full.names=F, recursive=F,pattern='filtered')
-    names(files) =gsub("\\_.*","",names(files))
-    files = Map(mutate,files,"file"=names(files))%>%rbindlist()
-    return(files)
-}
+peaks <- peaks[,rounded_width:=plyr::round_any(width, 100)] 
 
-human_peaks = read_peaks('hg38')
-chimp_peaks = read_peaks('pantro5')
-
-## plot distribution peak sizes
-all_peaks = rbind(human_peaks,chimp_peaks)
-
-pdf(paste(plot_dir,'Distribution_filtered_peak_sizes.pdf',sep=''),width=10,height=7)
-ggplot(all_peaks,aes(x=width,fill=file))+
+pdf(paste(outplot_dir,'distribution_peak_sizes.pdf',sep=''),width=15,height=7)
+ggplot(peaks,aes(x=rounded_width,fill=samples))+
     geom_bar()+
-    facet_wrap(file~.,scale='free')+
+    facet_wrap(samples~.,scale='free')+
+    ylab('Number of peaks')+ xlab('')+
     theme(legend.position='none')
-dev.off()
-
-
-## plot proportion peaks per binned width
-all_peaks = all_peaks[
-    ,binned_width:= ifelse(width < 50, '0-49',
-                    ifelse(width >= 50 & width < 151,'50-150',
-                    ifelse(width >= 151 & width < 301,'151-300',
-                    ifelse(width >= 301 & width < 451,'301-450',
-                    ifelse(width >= 451 & width < 601,'451-600',
-                    ifelse(width >= 601 & width < 751,'601-750',
-                    ifelse(width >= 751 & width < 901,'751-900',
-                    ifelse(width >= 901 & width < 1001,'901-1000',
-                    ifelse(width >= 1001 & width < 1501,'1001-1500',
-                    ifelse(width >= 1501 & width < 2001,'1501-2000',
-                    ifelse(width >= 2001 & width < 3001,'2001-3000','3001-5000'
-                    )))))))))))
-]
-
-binned_width_levels = c(
-        '0-49',
-        '50-150',
-        '151-300',
-        '301-450',
-        '451-600',
-        '601-750',
-        '751-900',
-        '901-1000',
-        '1001-1500',
-        '1501-2000',
-        '2001-3000',
-        '3001-5000'
-        )
-
-
-pdf(paste(plot_dir,'Distribution_binned_width_filtered_peak_sizes.pdf',sep=''),width=10,height=7)
-ggplot(all_peaks,aes(x=factor(binned_width,levels=binned_width_levels),fill=file))+
-    geom_bar()+
-    facet_wrap(file~.,scale='free')+
-    theme(
-        legend.position='none',
-        axis.text.x = element_text(angle = 60, vjust = 1, hjust=1)
-        )
 dev.off()

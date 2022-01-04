@@ -23,9 +23,9 @@ outplot_dir <- create_dir(plot_dir,'orthologous_peaks')
 peak_outdir <- create_dir(outdir,'final_peak_set')
 
 ## read species peaks 
-peak_file <- list.files(path=paste('../',genome,sep=''),recursive=T,full.names= T,pattern="^merged.*narrowPeak$")
-peaks <- fread(peak_file,sep='\t',header=F,select=c(1:3),col.names=c(range_keys))%>%makeGRangesFromDataFrame()%>%reduce(min.gapwidth=50L)%>%as.data.table()
-peaks <- peaks[,peakID:=paste('peak_',1:nrow(peaks),sep='')][,c('width','strand'):=NULL]
+# peak_file <- list.files(path=paste('../',genome,sep=''),recursive=T,full.names= T,pattern="^merged.*narrowPeak$")
+# peaks <- fread(peak_file,sep='\t',header=F,select=c(1:3),col.names=c(range_keys))%>%makeGRangesFromDataFrame()%>%reduce(min.gapwidth=50L)%>%as.data.table()
+# peaks <- peaks[,peakID:=paste('peak_',1:nrow(peaks),sep='')][,c('width','strand'):=NULL]
 
 ## plot distribution peak sizes
 plot_peak_sizes <- function(peaks){
@@ -61,15 +61,18 @@ liftover_back <- liftover_back[,width:=end-start]
 peaks <- peaks[,width:=end-start]
 
 orthologous_peaks <- peaks[
-        liftover_back,on=c('peakID'),nomatch=0
+        liftover_back,on=c('peakID','seqnames','start'),nomatch=0
         ][
             ,keep:=ifelse(round(i.width/width,2)>=0.5,'keep','no')
-            ][ 
+            ][
                 keep=='keep'
                 ][
                     ,c(..range_keys,'peakID','width')
+                    ][
+                        width<=2000
 ]%>%setorderv(range_keys,1)
 
+# [,keep:=ifelse(round(i.width/width,2)>=0.8,'keep','no')][keep=='keep']
 ##-----------------
 ## export results
 ##-----------------
