@@ -23,7 +23,7 @@ samples_names <- c(
 )
 
 range_keys <- c('seqnames','start','end')
-species_names <- c('chimp','common','human')
+species_names <- c('chimp','human')
 peak_type <- c('da','non_da')
 chain_path <- '/data/projects/punim0595/dvespasiani/Human_Chimpanzee_iPSCs_chromatin_accessibility/data/LiftOver_chains/'
 standard_chr <- paste0("chr", c(1:23,'2A','2B', "X", "Y")) # only use standard chromosomes
@@ -39,12 +39,28 @@ chrom_states <- c(
 ##----------------
 ## color palette
 ##----------------
-samples_palette <- RColorBrewer::brewer.pal(12, 'Set3')
+samples_palette <- c(
+  "#219ebc","#468189","#f3722c",
+  "#f8961e","#f9c74f","#f94144",
+  "#90be6d","#f4e9cd","#585123",
+  "#43aa8b","#577590","#f58549"
+)
 names(samples_palette) <- samples_names
-species_palette <- c('#ff7d00','#ffecd1','#15616d')
-names(species_palette) <- species_names
-da_palette <- c('#e9c46a','#2a9d8f')
+
+species_palette <- c('#ff7d00','#15616d')
+names(species_palette) = species_names
+
+da_palette <- c('#E9D8A6','#0A9396')
 names(da_palette) <- peak_type
+
+chrom_state_colors <- c(
+  '#FF0000','#FF6E00','#32CD32',
+  '#008000','#006400','#C2E105',
+  '#FFFF00','#66CDAA','#8A91D0',
+  '#CD5C5C','#E9967A','#BDB76B',
+  '#3A3838','#808080','#DCDCDC'
+)
+names(chrom_state_colors) <- chrom_states
 
 ##---------------------------
 ## functions
@@ -77,6 +93,32 @@ export_file <- function(directory,genome,filename){
     return(file)
 }
 
+## annotate peaks in chromatin states
+annotate_peaks <- function(peaks){
+  annotated <- foverlaps(copy(peaks),ipsc_chromstate,type='any')%>%na.omit()
+  annotated <- annotated[
+    ,overlap:=ifelse(i.start<start,i.end-start,end-i.start),by=.(cell_type)
+    ][
+        ,.SD[which.max(overlap)], by=.(peakID,cell_type)
+        ][
+            ,c(range_keys[-1],'overlap'):=NULL
+            ]%>%setnames(old=c('i.start','i.end'),new=c(range_keys[-1]))
+  return(annotated)
+}
+
+## counts peaks in chromatin states
+count_peaks_chromstate <- function(peaks){
+  counts <- copy(peaks)
+  counts<-counts[
+      ,numb_peaks_chromstate:=.N,by=.(chrom_state,cell_type)
+      ][
+        ,numb_peaks:=.N,by=.(cell_type)
+        ][
+            ,c('cell_type','chrom_state','numb_peaks_chromstate','numb_peaks')
+            ]%>%unique()
+  return(counts)
+}
+## calculate OR
 calculate_or <- function(peaks_oi,peaks_noi,merging_keys){
   peaksoi_vs_peaksnoi_or <- merge(peaks_oi,peaks_noi,by=c(merging_keys))%>%
   dplyr::select(c(contains('numb'),contains(all_of(merging_keys))))
@@ -93,8 +135,26 @@ calculate_or <- function(peaks_oi,peaks_noi,merging_keys){
         )
     }
   )
-  or_results <- Map(mutate,fisher_test,elements=names(fisher_test))%>%rbindlist()%>%adjust_pvalues()
+  or_results <- Map(mutate,fisher_test,elements=names(fisher_test))%>%rbindlist()
+  or_results <- p_significance(or_results,or_results$p)
   return(or_results)
+}
+
+## plot OR 
+plot_or <- function(peaks){
+  p <- ggplot(peaks,aes(x=factor(elements,levels=chrom_states),y=log(odds_ratio),fill=elements))+
+    geom_violin(trim=T,scale = "width")+
+    geom_dotplot(binaxis='y', stackdir='center',position=position_dodge(1),binwidth=0.2)+
+    scale_fill_manual(values = chrom_state_colors)+
+    geom_hline(yintercept=0,linetype='dashed')+
+    xlab('chromatin state') + ylab('log OR')+
+    theme_classic()+
+    theme(
+      legend.position = "bottom",
+      axis.text.x =element_blank(),
+      axis.ticks.x =element_blank()
+    )
+  return(p)
 }
 
 ## empirical permutations
@@ -113,18 +173,14 @@ permute_data <- function(metric, peak_type, n=10000){
   return(return)
 }
 
-## peaks DA/NON-DA
-# read_da_peaks = function(file){
-#     df = fread(file,sep='\t',header=T,select=c(range_cols,'FDR','logFC','direction'))
-#     df = df[,peak_type:=ifelse(FDR < 0.01,'da','non_da')]%>%unique()
-#     setkeyv(df,range_cols)
-#     return(df)
-# }
-read_da_peaks = function(file,significance){
-    df = fread(paste(peakDir,file,sep=''),sep='\t',header=T)%>%unique()
-    df = df[significant %in% significance]
+## read files 
+read_da_results <-  function(file,significance){
+    df <- fread(paste(da_dir,file,sep=''),sep='\t',header=T)%>%setnames(
+      old=c('human_seqnames','human_start','human_end','human_peakID'),new=c(range_keys,'peakID'))
+    setkeyv(df,range_keys)
     return(df)
 }
+
 ## TADs
 read_tads = function(file){
   tad = fread(paste(tads_dir,file,sep=''),sep='\t',header=T)%>%setnames(old='disc_species',new='species')
@@ -194,28 +250,38 @@ liftPeaks <-  function(peaks,chain_file){
 
 convert_coord <- function(peaks,chain_file){
     chain <- rtracklayer::import.chain(paste(chain_path,chain_file,sep=''))
-    peaks_df <- copy(peaks)[,width:=end-start]
-    peaks_gr <- makeGRangesFromDataFrame(peaks_df,keep.extra.columns=T)
-    seqlevelsStyle(peaks_gr) = "UCSC"
-    names(peaks_gr)=peaks_gr$peakID
+    original_peak_df <- copy(peaks)[,width:=end-start]
+    original_peak_gr <- makeGRangesFromDataFrame(original_peak_df,keep.extra.columns=T)
+    seqlevelsStyle(original_peak_gr) = "UCSC" 
+    names(original_peak_gr)=original_peak_gr$peakID
+    
+    lifted_peaks = liftOver(original_peak_gr, chain)
 
-    lifted_peaks = liftOver(peaks_gr, chain)%>%reduce(min.gapwidth=100L)
+    lifted_peaks  = unlist(lifted_peaks)%>%as.data.table()
+    keep = copy(as.data.table(lifted_peaks))[,c('peakID','seqnames')]%>%unique()
+    keep = keep[,diff_chr:=.N,by=.(peakID)][diff_chr==1][seqnames %in% standard_chr]
 
-    names_lifted_peaks =copy(lifted_peaks)%>%unlist()
-    peakIDs = data.table(peakID = names(names_lifted_peaks))
-
-    lifted_peaks  = unlist(lifted_peaks)%>%as.data.table()%>%cbind(peakIDs)
-    ## merge the 2 dt to get back the logFC and other metadata
-    lifted_peaks_final = lifted_peaks[
-      peaks_df,on='peakID',nomatch=0
-      ][
-        ,c('width','strand',paste('i',c(range_keys,'width'),sep='.')):=NULL
+    peaks_to_keep = copy(lifted_peaks)[
+        peakID %in% keep$peakID
         ][
-            seqnames %in% standard_chr
-            ]%>%setorderv(range_keys,1)%>%unique()
-    setkeyv(lifted_peaks_final,range_keys)
+            original_peak_df[,c('width','peakID')],on=c('peakID'),nomatch=0
+            ]
+    merge_peaks = copy(peaks_to_keep)[
+        ,start:=min(start),by=.(peakID)
+        ][
+            ,end:=max(end),by=.(peakID)
+            ][
+                ,width:=end-start
+                ][
+                    ,size_change:=round(width/i.width,2)
+                    ][
+                        size_change>=0.8 & size_change<=1.2
+                        ][
+                            ,c('width','i.width','strand','size_change'):=NULL
+                            ]%>%unique()
+    setkeyv(merge_peaks,range_keys)
 
-    return(lifted_peaks_final)
+    return(merge_peaks)
 }
 
 ##--------------
@@ -235,20 +301,20 @@ adjust_pvalues=function(x){
   df=copy(x)
   pvals_df=copy(df)
   pvals_df=pvals_df$p
-  pvals_df_adjusted=p.adjust(pvals_df,'fdr')%>%as.data.table() %>% setnames('p.adj')
-  pvals_df_adjusted = p_significance(pvals_df_adjusted)
+  pvals_df_adjusted = p.adjust(pvals_df,'fdr')%>%as.data.table() %>% setnames('p.adj')
+  pvals_df_adjusted = p_significance(pvals_df_adjusted,pvals_df_adjusted$p.adj)
   df_final=cbind(df,pvals_df_adjusted)
   return(df_final)
 }
 
 ##
-p_significance = function(x){
+p_significance = function(x,p){
   df=copy(x)
   df=df[
-    ,p.signif:= ifelse(`p.adj`<=0.0001,'****',
-                       ifelse(`p.adj`>0.0001 &`p.adj`<=0.001,'***',
-                              ifelse(`p.adj`>0.001 & `p.adj`<=0.01,'**',
-                                     ifelse(`p.adj`>0.01 & `p.adj`<=0.05,'*',' '))))
+    ,p.signif:= ifelse(p<=0.0001,'****',
+                       ifelse(p>0.0001 & p <=0.001,'***',
+                              ifelse(p>0.001 & p<=0.01,'**',
+                                     ifelse(p>0.01 & p<=0.05,'*',' '))))
     ]
     return(df)
 }
@@ -267,13 +333,6 @@ pval_vector=function(df,columns){
 ##-------------------------------
 ## color legends for heatmaps
 ##-------------------------------
-chrom_state_colors = c(
-  '#FF0000','#FF6E00','#32CD32',
-  '#008000','#006400','#C2E105',
-  '#FFFF00','#66CDAA','#8A91D0',
-  '#CD5C5C','#E9967A','#BDB76B',
-  '#3A3838','#808080','#DCDCDC'
-)
 
 chromstatus_color=function(df,column){
   x=copy(df)[,c(..column)]

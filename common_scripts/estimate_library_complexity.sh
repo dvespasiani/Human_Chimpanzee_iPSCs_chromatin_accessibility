@@ -2,7 +2,7 @@
 ## input filtered bams (dup removed)
 module add bedtools/2.29.2
 
-basedir='/data/projects/punim0595/dvespasiani/Human_Chimpanzee_iPSCs_chromatin_accessibility/hg38'
+basedir='/data/projects/punim0595/dvespasiani/Human_Chimpanzee_iPSCs_chromatin_accessibility/panTro5'
 wd="${basedir}/output/Alignment"
 indir="${wd}/Files"
 outdir="${wd}/qc"

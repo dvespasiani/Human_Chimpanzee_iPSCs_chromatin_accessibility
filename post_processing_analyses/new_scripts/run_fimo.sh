@@ -15,5 +15,5 @@ hocomoco="/data/projects/punim0586/dvespasiani/Annotation_and_other_files/MEME_f
 for f in "$input_dir"/* ; do
     fimo_output="$output_dir/$(echo $(basename $f)| cut -f 1 -d '.')/"
     echo "Running fimo on $(basename $f) using $(basename $hocomoco) motifs"
-    fimo --bfile --motif-- --thresh 0.01 --o "$fimo_output" "$hocomoco" "$f"
+    fimo --bfile --motif-- --thresh 0.0001 --o "$fimo_output" "$hocomoco" "$f"
 done

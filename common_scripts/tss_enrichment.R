@@ -10,6 +10,7 @@ library(ggplot2)
 library(ggpubr)
 library(csaw)
 library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+library(TxDb.Ptroglodytes.UCSC.panTro5.refGene)
 
 setwd('/data/projects/punim0595/dvespasiani/Human_Chimpanzee_iPSCs_chromatin_accessibility/post_processing_analyses')
 
@@ -23,28 +24,41 @@ encode_acceptable = 5
 
 ## list bam
 standard_chr <- paste0("chr", c(1:23,'2A','2B', "X", "Y")) # only use standard chromosomes
-param <- readParam(pe = "both",restrict=standard_chr,minq=20, dedup=TRUE)
+# param <- readParam(pe = "both",restrict=standard_chr,minq=20, dedup=TRUE)
 
-get_bams <- function(species){
-    bams <- list.files(paste0('../',genome,bamDir,sep=''), recursive = T,full.names = T,pattern="^H.*_tn5_shifted_sorted.bam$|C.*_tn5_shifted_sorted.bam$")
-    return(bams)
+param <- readParam(pe = "both",restrict=standard_chr,max.frag=1000)
+
+get_bamReads = function(organimsDir,pattern){
+    bamReads = list.files(paste0(organimsDir,bamDir), 
+        recursive = T,full.names = T,pattern=pattern)
+    return(bamReads)
 }
 
-bams <- get_bams(genome)
+hg38_bams = get_bamReads('../hg38/',"^H.*_tn5_shifted_sorted.bam$")
+pantro5_bams = get_bamReads('../panTro5/',"^C.*_tn5_shifted_sorted.bam$")
 
-alignments <- lapply(bams, function(x)readGAlignments(x))
-names(alignments) = samples_names
+# bams <- get_bams(genome)
 
-txs <- transcripts(TxDb.Hsapiens.UCSC.hg38.knownGene)
+human_alignment <- lapply(hg38_bams, function(x)readGAlignments(x))
+chimp_alignment <- lapply(pantro5_bams, function(x)readGAlignments(x))
 
-get_tsse <- function(alignment){
+# alignments <- c(chimp_alignment,human_alignment)
+# names(alignments) = samples_names
+
+human_txs <- transcripts(TxDb.Hsapiens.UCSC.hg38.knownGene)
+chimp_txs <- transcripts(TxDb.Ptroglodytes.UCSC.panTro5.refGene)
+
+get_tsse <- function(alignment,txs){
     tsse <- TSSEscore(alignment, txs)
     range_bp <- 100*(-9:10-.5)
     tsse_df <- data.table(range=range_bp,tsse_enrichment=tsse$values,tsse_score=tsse$TSSEscore)
     return(tsse_df)
 }
 
-tss_enrichment <- lapply(alignments,function(x)get_tsse(x))
+human_tss_enrichment <- lapply(human_alignment,function(x)get_tsse(x,human_txs))
+chimp_tss_enrichment <- lapply(chimp_alignment,function(x)get_tsse(x,chimp_txs))
+
+tss_enrichment <- c(chimp_tss_enrichment,human_tss_enrichment)
 tss_enrichment <- Map(mutate,tss_enrichment,samples=samples_names)%>%rbindlist()
 
 pdf(paste(outplot_dir,'tss_enrichment.pdf',sep=''),width=7,height=7)
@@ -55,7 +69,8 @@ ggplot(tss_enrichment,aes(x=range,y=tsse_enrichment,col=samples))+
     geom_hline(yintercept=encode_ideal,linetype="dashed")+
     geom_text(aes(-900,encode_ideal,label = 'ideal', vjust = -1),col='black')+
     ylab('Enrichment')+xlab('Distance from TSS')+
-    # scale_color_manual(values=samples_palette)+
+    scale_color_manual(values=samples_palette)+
+    theme_classic()+
     theme(
         legend.position='bottom',
         axis.text.x = element_text(angle = 60, vjust = 1, hjust=1)

@@ -5,30 +5,59 @@
 
 ## loop extracts sequence and peakID field names from bed file 
 
-wd='/Users/davidevespasiani'
-deepbind_dir="${wd}/deepbind"
-input_dir="${wd}/Desktop/Projects/human_chimp_atac/fimo_ctcf" 
-output_dir="${wd}/Desktop/Projects/human_chimp_atac/deepbind_predictions"
+# wd='/Users/davidevespasiani'
+# deepbind_dir="${wd}/deepbind"
+# input_dir="${wd}/Desktop/Projects/human_chimp_atac/deepbind_input" 
+# output_dir="${wd}/Desktop/Projects/human_chimp_atac/deepbind_output"
+
+# if [ ! -d "$output_dir" ]; then
+#    mkdir -p "$output_dir";
+# fi
+
+
+# cd "$deepbind_dir"
+
+# for f in "$input_dir"/*ctcf_peaks.txt ; do
+#   file_basename=$(echo $(basename $f)| cut -f 1 -d '_')
+#   awk '{print $8}' $f | tail -n +2 > ${file_basename}_sequences.txt 
+#   awk '{print $4}' $f >  ${file_basename}_peakIDs.txt
+#   deepbind_output="$output_dir/${file_basename}"
+#   ./deepbind  --echo  example.ids < ${file_basename}_sequences.txt > "${deepbind_output}_tmp.txt"
+#   paste -d '\t' ${file_basename}_peakIDs.txt "${deepbind_output}_tmp.txt" > "${deepbind_output}_ctcf_affinity_predictions.txt"
+#   rm "${deepbind_output}_tmp.txt"
+#   rm ${file_basename}_sequences.txt
+#   rm ${file_basename}_peakIDs.txt
+# done
+
+
+
+## new script to predict also on all hg38 CTCFs
+
+basedir='/Users/davidevespasiani'
+wd="${basedir}/Desktop/Projects/human_chimp_atac"
+ctcf_peaks="${wd}/ctcf_peaks"
+deepbind_dir="${wd}/deepbind_input"
+output_dir="${wd}/deepbind_output"
 
 if [ ! -d "$output_dir" ]; then
    mkdir -p "$output_dir";
 fi
 
+if [ ! -d "$deepbind_dir" ]; then
+   mkdir -p "$deepbind_dir";
+fi
 
-cd "$deepbind_dir"
+awk '{print $3}' ${ctcf_peaks}/all_peaks_seq_discovered_ctcf.txt | tail -n +2 > ${deepbind_dir}/mypeaks_ctcf_sequences.txt 
+awk '{print $1}' ${ctcf_peaks}/all_peaks_seq_discovered_ctcf.txt > ${deepbind_dir}/mypeaks_ctcf_peakIDs.txt
 
-for f in "$input_dir"/*ctcf_peaks.txt ; do
+awk '{print $5}' ${ctcf_peaks}/hg38_all_ctcf_final.bed | tail -n +2 > ${deepbind_dir}/genwide_ctcf_sequences.txt 
+awk '{print $4}' ${ctcf_peaks}/hg38_all_ctcf_final.bed >  ${deepbind_dir}/genwide_ctcf_peakIDs.txt
+
+
+for f in "$deepbind_dir"/* ; do
   file_basename=$(echo $(basename $f)| cut -f 1 -d '_')
-  awk '{print $8}' $f | tail -n +2 > ${file_basename}_sequences.txt 
-  awk '{print $4}' $f >  ${file_basename}_peakIDs.txt
   deepbind_output="$output_dir/${file_basename}"
-  ./deepbind  --echo  example.ids < ${file_basename}_sequences.txt > "${deepbind_output}_tmp.txt"
-  paste -d '\t' ${file_basename}_peakIDs.txt "${deepbind_output}_tmp.txt" > "${deepbind_output}_ctcf_affinity_predictions.txt"
-  rm "${deepbind_output}_tmp.txt"
-  rm ${file_basename}_sequences.txt
-  rm ${file_basename}_peakIDs.txt
+  ./deepbind/deepbind  --echo  ./deepbind/example.ids < "${deepbind_dir}/${file_basename}_ctcf_sequences.txt" > "${deepbind_output}_tmp.txt"
+  paste -d '\t' "${deepbind_dir}/${file_basename}_ctcf_peakIDs.txt" "${deepbind_output}_tmp.txt" > "${deepbind_output}_ctcf_affinity_predictions.txt"
+  rm "${deepbind_output}_tmp.txt" 
 done
-
-
-
-

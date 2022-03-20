@@ -13,10 +13,13 @@ setwd('/data/projects/punim0595/dvespasiani/Human_Chimpanzee_iPSCs_chromatin_acc
 scripts_dir <- './scripts/'
 source(paste(scripts_dir,'utils.R',sep=''))
 
-peakdir <- paste('../',genome,'/output/PeakCalling/Files',sep='')
+peakdir = '/output/PeakCalling/Files'
 outplot_dir <- create_dir(plot_dir,'atac_seq_qc')
 
-peak_files <- list.files(peakdir,full.names=T, recursive=F,pattern="^H.*narrowPeak$|C.*narrowPeak$")
+human_peak_files <- list.files(paste('../hg38',peakdir,sep=''),full.names=T, recursive=F,pattern="^H.*narrowPeak$")
+chimp_peak_files <- list.files(paste('../panTro5',peakdir,sep=''),full.names=T, recursive=F,pattern="^C.*narrowPeak$")
+
+peak_files <- c(chimp_peak_files,human_peak_files)
 
 peaks <- lapply(peak_files,function(x)
     x<-fread(x,sep='\t',header=F,select=c(1:3),col.names=range_keys)[
@@ -28,10 +31,20 @@ peaks <- Map(mutate,peaks,samples=samples_names)%>%rbindlist()
 
 peaks <- peaks[,rounded_width:=plyr::round_any(width, 100)] 
 
-pdf(paste(outplot_dir,'distribution_peak_sizes.pdf',sep=''),width=15,height=7)
+## get avg numb peaks
+numb_peaks <- copy(peaks)[,n:=.N,by=.(samples)][,c('samples','n')]%>%unique()
+mean(numb_peaks$n)
+# [1] 157200.2
+
+pdf(paste(outplot_dir,'distribution_peak_sizes.pdf',sep=''),width=7,height=10)
 ggplot(peaks,aes(x=rounded_width,fill=samples))+
     geom_bar()+
-    facet_wrap(samples~.,scale='free')+
+    scale_fill_manual(values=samples_palette)+
+    facet_wrap(samples~.,ncol=2)+
     ylab('Number of peaks')+ xlab('')+
-    theme(legend.position='none')
+    theme_classic()+
+    theme(
+        legend.position='none',
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)
+        )
 dev.off()

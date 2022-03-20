@@ -49,7 +49,6 @@ macs2 callpeak --format BAMPE --treatment ${input}/${prefix}_tn5_shifted_sorted.
     --name ${prefix}_macs2_default --shift 100 --nomodel -B --SPMR \
     --extsize 300 --pvalue 0.01 --call-summits -g ${genome_size}
 
-## dont do these
 # echo "Removing peaks within blacklisted regions";
 # bedtools intersect -v  \
 # -a ${output}/${prefix}_macs2_default_peaks.narrowPeak \

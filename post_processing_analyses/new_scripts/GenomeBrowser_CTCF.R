@@ -18,12 +18,12 @@ setwd('/data/projects/punim0595/dvespasiani/Human_Chimpanzee_iPSCs_chromatin_acc
 scripts_dir = './scripts/'
 source(paste(scripts_dir,'utils.R',sep=''))
 
-chrom_state_dir = './data/iPSC_chrom_states_hg38'
-plot_dir = './output/plots/GenomeBrowser/'
-files_dir <- './output/files/'
-tads_dir =  './output/TADs/'
+# ctcf_dir <- './output/homer/homer_output/ctcf/'
+outplot_dir <- create_dir(plot_dir,'GenomeBrowser')
 peakDir = './output/DA/peaks/'
-
+tads_dir =  './output/TADs/'
+files_dir <- './output/files/'
+homer_ctcf_dir <-'output/homer/homer_output/ctcf'
 
 ## read common TADs
 common_tads_hg38 <- read_tads('hg38_tads.bed')[,species:=ifelse(label==1,'Common',species)][species=='Common'][,label:=NULL]%>%setorderv(c(range_keys),1)
@@ -73,23 +73,41 @@ downstream_boundaries = copy(boundaries)%>%dplyr::select(c('seqnames',contains('
 tad_boundaries <- rbind(upstream_boundaries,downstream_boundaries)
 setkeyv(tad_boundaries,range_keys)
 
-##--------------------
-## read CTCF peaks
-##--------------------
-deepbind_output_file <- dir(paste(files_dir,'deepbind_predictions',sep=''),recursive=F,full.names=T,pattern='fimo')
-ctcf_peak_file <- dir(paste(files_dir,'fimo_ctcf',sep=''),recursive=F,full.names=T,pattern='fimo')
+##-----------------------
+## read CTCF results
+##-----------------------
+deepbind_output_file <- dir(paste(files_dir,'deepbind_output',sep=''),recursive=F,full.names=T)[[2]]
+ctcf_peak_files <- dir(homer_ctcf_dir,recursive=T,full.names=T,pattern='all')[[2]]
 
-ctcf_peaks <- fread(ctcf_peak_file,header=T,sep='\t')
-ctcf_affinities <- fread(deepbind_output_file,sep='\t',header=T)%>%dplyr::select(c(1:2),contains('D00328.003'))%>%setnames(old=c(2,3),new=c('sequence','prediction'))
+## add DA info and genomic coordinates
+da_file <- paste(da_dir,'da_results.txt',sep='')
+da_results <- fread(da_file,sep='\t',header=T,select=c(range_keys,'logFC','DA','peakID','peak_species'))
 
-ctcf_peaks <- ctcf_peaks[
-    ctcf_affinities,on=c('peakID','sequence'),nomatch=0
-    ][
-            DA=='non_da'
-            ][
-                ,c('peak_species','sequence'):=NULL
-]
+ctcf_peaks <- fread(ctcf_peak_files,header=T,sep='\t')[,'Motif Name':=NULL]%>%setnames(old=c('FASTA ID','Sequence'),new=c('peakID','sequence'))
+ctcf_peaks <- ctcf_peaks[da_results,on='peakID',nomatch=0]
+
+ctcf_affinities <-fread(deepbind_output_file,sep='\t',header=T)%>%dplyr::select(c(1:2),contains('D00328.003'))%>%setnames(old=c(1,2,3),new=c('peakID','sequence','prediction'))
+
+ctcf_peaks <- ctcf_peaks[copy(ctcf_affinities),on=c('peakID','sequence'),nomatch=0]
 setkeyv(ctcf_peaks,range_keys)
+
+# ##--------------------
+# ## read CTCF peaks
+# ##--------------------
+# deepbind_output_file <- dir(paste(files_dir,'deepbind_predictions',sep=''),recursive=F,full.names=T,pattern='fimo')
+# ctcf_peak_file <- dir(paste(files_dir,'fimo_ctcf',sep=''),recursive=F,full.names=T,pattern='fimo')
+
+# ctcf_peaks <- fread(ctcf_peak_file,header=T,sep='\t')
+# ctcf_affinities <- fread(deepbind_output_file,sep='\t',header=T)%>%dplyr::select(c(1:2),contains('D00328.003'))%>%setnames(old=c(2,3),new=c('sequence','prediction'))
+
+# ctcf_peaks <- ctcf_peaks[
+#     ctcf_affinities,on=c('peakID','sequence'),nomatch=0
+#     ][
+#             DA=='non_da'
+#             ][
+#                 ,c('peak_species','sequence'):=NULL
+# ]
+# setkeyv(ctcf_peaks,range_keys)
 
 
 ## find the tad with a high ctcf overlaps at its boundary
@@ -132,7 +150,7 @@ setkeyv(region_to_plot,range_keys)
 
 ## all the ctcf overlapping within the region
 ctcf_overlap_region <- foverlaps(ctcf_peaks,region_to_plot,type='within')%>%na.omit()
-ctcf_overlap_region <- ctcf_overlap_region[,c('start','end'):=NULL]%>%setnames(old=c(1:3),new=range_keys)
+ctcf_overlap_region <- ctcf_overlap_region[,c('start','end'):=NULL]%>%setnames(old=c('i.start','i.end'),new=range_keys[-1])
 
 ##--------------------------------------------------
 ## get phastcons score only the region around CTCFs
@@ -286,11 +304,11 @@ bigwigs_track <- get_track(bigwigs,region_to_plot,c('#f79824','#33a1fd'))
 human_tracks <- c(gtrack,tad_track,conservation_track,ctcf_affinity_track,bigwigs_track)
 
 ## plot tracks
-pdf(paste0(plot_dir,'human_ctcf_genome_plot.pdf',sep=''),width = 10, height = 10)
+pdf(paste0(outplot_dir,'human_ctcf_genome_plot.pdf',sep=''),width = 10, height = 10)
 plotTracks(
     human_tracks,
-    from = region_to_plot$start,
-    to =  region_to_plot$end
+    from = region_to_plot$start+6000,
+    to =  region_to_plot$end-3000
 )
 dev.off()
 

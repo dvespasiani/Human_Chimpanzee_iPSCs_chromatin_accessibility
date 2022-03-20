@@ -6,9 +6,9 @@ cd /data/projects/punim0595/dvespasiani/Human_Chimpanzee_iPSCs_chromatin_accessi
 sinteractive \
  --account=punim0586  \
  --ntasks=1 \
- --cpus-per-task=1 \
- --mem=40000 \
- --time=8:00:00 \
+ --cpus-per-task=2 \
+ --mem=700000 \
+ --time=10:00:00 \
  --partition=mig
  
 # list of modules

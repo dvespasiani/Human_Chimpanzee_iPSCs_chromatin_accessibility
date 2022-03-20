@@ -18,14 +18,16 @@ setwd('/data/projects/punim0595/dvespasiani/Human_Chimpanzee_iPSCs_chromatin_acc
 scripts_dir <- './scripts/'
 source(paste(scripts_dir,'utils.R',sep=''))
 
+human_chimp_col <- c('#14213d','#fca311')
+names(human_chimp_col) = c('chimp','human')
 peak_file <- paste('output/final_peak_set/',genome,'_all_orthologous_peaks.txt',sep='')
 # peak_file <- paste('../',genome,'/output/PeakCalling/Files/merged_sample_macs2_default_peaks.narrowPeak',sep='')
 
 outplot_dir <- create_dir(plot_dir,'DA')
 
 ## list bam
-standard_chr <- paste0("chr", c(1:23,'2A','2B', "X", "Y")) # only use standard chromosomes
-param <- readParam(pe = "both",restrict=standard_chr,max.frag=1000)
+standard_chr <- paste0("chr", c(1:23, "X", "Y")) # only use standard chromosomes
+param <- readParam(pe = "both",restrict=standard_chr,max.frag=2000)
 
 get_bams <- function(species){
     bams <- list.files(paste0('../',genome,bamDir,sep=''), recursive = T,full.names = T,pattern="^H.*_tn5_shifted_sorted.bam$|C.*_tn5_shifted_sorted.bam$")
@@ -36,49 +38,127 @@ bams <- get_bams(genome)
 
 ## read consensus peak
 peaks <- fread(peak_file,sep='\t',header=T)%>%makeGRangesFromDataFrame(keep.extra.columns=T)
+peak_width <- copy(peaks)%>%as.data.table()%>%dplyr::pull('width')
+names(peak_width) = peaks$peakID
 
 numb_all_peaks <- length(peaks)
 
-##---------------------
-## QC & Normalisation
-##---------------------
-## Use RPKM to account for differences in peak sizes
-reads_in_peaks <- regionCounts(bams, peaks,param=param)%>%asDGEList()
-peak_width <- copy(peaks)%>%as.data.table()%>%dplyr::pull('width')
-reads_in_peaks$counts <- rpkm(reads_in_peaks$counts,peak_width)
+## reusable function(s)
 
-rownames(reads_in_peaks) <- as.data.table(copy(peaks))$peakID
-colnames(reads_in_peaks) <- samples_names
-reads_in_peaks$samples <- mutate(reads_in_peaks$samples,'group'=ifelse(rownames(reads_in_peaks$samples) %like% 'C','chimp','human'))
+make_dt <- function(counts){
+    dt <-copy(as.data.table(counts))
+    long_dt <- melt(dt,measure.vars=names(dt))
+    long_dt <- long_dt[,group:=ifelse(variable %like% 'C','chimp','human')]
+    return(long_dt)
+}
 
-pdf(paste(outplot_dir,"density_reads_in_peaks_rpkm.pdf",sep=''),width=7,height=7)
-plotDensities(log(reads_in_peaks$counts+1), group=rownames(reads_in_peaks$samples),col=samples_palette) 
+plot_boxes <- function(dt){
+p <- ggplot(dt,aes(x=variable,y=value,fill=group))+
+geom_boxplot()+
+scale_fill_manual(values=human_chimp_col)+
+xlab('Sample')+ylab('log2 CPM')+
+theme_classic()+
+  theme(
+    legend.position = "bottom",
+    axis.ticks.x =element_blank()
+  )
+  return(p)
+}
+
+plot_densities <-function(dt){
+p <- ggplot(dt,aes(x=value,col=variable))+
+geom_density()+
+# scale_color_manual(values=human_chimp_col)+
+xlab('log2 CPM')+ylab('Density')+
+theme_classic()+
+  theme(
+    legend.position = "bottom",
+    axis.ticks.x =element_blank()
+  )
+  return(p)
+}
+##---------------------
+## Filtering
+##---------------------
+prior_counts = 0.5
+
+raw_counts <- regionCounts(bams, peaks,param=param)%>%asDGEList()
+rownames(raw_counts) <- as.data.table(copy(peaks))$peakID
+colnames(raw_counts) <- samples_names
+raw_counts$samples <- mutate(raw_counts$samples,'group'=ifelse(rownames(raw_counts$samples) %like% 'C','chimp','human'))
+
+reads_in_peaks <- copy(raw_counts) #backup
+
+cpm_counts <- copy(raw_counts)
+cpm_counts$counts <- cpm(cpm_counts$counts,gene.length = peak_width,log=T,prior.counts = prior_counts)
+
+## plot log2 RPKM before and after filtering
+pdf(paste(outplot_dir,"density_reads_in_peaks_cpm.pdf",sep=''),width=7,height=7)
+plot_densities(make_dt(cpm_counts$counts))+geom_vline(xintercept=2)+geom_vline(xintercept=1,linetype='dashed')
+# plotDensities(reads_in_peaks$counts, group=reads_in_peaks$samples$group,col=human_chimp_col)
 dev.off()
 
 ## filter low reads 
-keep <- filterByExpr(reads_in_peaks, group=reads_in_peaks$group,min.total.count = 3,min.count=3)
-reads_in_peaks_filtered <- copy(reads_in_peaks)[keep,, keep.lib.sizes=FALSE]
-dim(reads_in_peaks_filtered)
+keep <- filterByExpr(cpm_counts,min.count=3)
+# keep <- rowMeans(cpm_counts$counts) > 2
+# keep <- keep[apply(keep,1, function(x) all(x>1))),]
+cpm_counts_filtered <- copy(cpm_counts)[keep,, keep.lib.sizes=FALSE]
+raw_counts_filtered <- copy(raw_counts)[keep,, keep.lib.sizes=FALSE]
+dim(cpm_counts)
+dim(cpm_counts_filtered)
 
-## quantile normalise read counts
-reads_in_peaks_filtered_tmm <- calcNormFactors(copy(reads_in_peaks_filtered), method = "TMM")
-quant_norm_counts <- copy(reads_in_peaks_filtered_tmm)
-quant_norm_counts$counts <- normalizeQuantiles(reads_in_peaks_filtered_tmm$counts, ties=F)
+# filtered_peak_width <- copy(peak_width)[names(peak_width) %in% rownames(raw_counts_filtered) ]
 
-## add sex covariate 
-quant_norm_counts$sex <- c('F','M','F','F','M','M','M','F','M','F','M','F') # order follows the samples_names vector
+# rpkm_counts_filtered <- copy(raw_counts_filtered)
+# rpkm_counts_filtered$counts <- rpkm(rpkm_counts_filtered$counts,gene.length = filtered_peak_width)
 
-## plot the density of log-RPKM for the tmm norm filtered counts for each sample
-pdf(paste(outplot_dir,"density_filtered_reads_in_peaks_rpkm_quantnorm.pdf",sep=''),width=7,height=7)
-plotDensities(log(quant_norm_counts$counts+1), group=rownames(quant_norm_counts$samples),col=samples_palette) 
+# df[rowSums(df > 10) >= 1, ]
+
+pdf(paste(outplot_dir,"density_reads_in_peaks_cpm_filtered.pdf",sep=''),width=7,height=7)
+plot_densities(make_dt(cpm_counts_filtered$counts))
+# plotDensities(log2(reads_in_peaks_filtered$counts+1), group=reads_in_peaks_filtered$samples$group,col=human_chimp_col)
 dev.off()
+
+##------------------
+## Normalisation
+##------------------
+pdf(paste(outplot_dir,"unnormalised_cpm_filtered.pdf",sep=''),width=7,height=7)
+plot_boxes(make_dt(cpm_counts_filtered$counts))
+dev.off()
+
+# tmm normalisation
+cpm_tmm_norm_counts <- cpm(calcNormFactors(copy(raw_counts_filtered),method='TMM'),log=T,prior.counts=prior_counts)
+
+pdf(paste(outplot_dir,"tmm_cpm_filtered.pdf",sep=''),width=7,height=7)
+plot_boxes(make_dt(cpm_tmm_norm_counts))
+dev.off()
+
+# loess
+# loess_norm_counts <- normalizeBetweenArrays(copy(rpkm_counts_filtered$counts), method = "cyclicloess")
+loess_norm_counts <- voom(raw_counts_filtered$counts, normalize.method = "cyclicloess")
+
+pdf(paste(outplot_dir,"loess_norm_rpkm_filtered.pdf",sep=''),width=7,height=7)
+plot_boxes(make_dt(loess_norm_counts$E))
+dev.off()
+
+# quantile
+quant_norm_counts <- voom(raw_counts_filtered$counts, normalize.method = "quantile")
+
+pdf(paste(outplot_dir,"quant_norm_rpkm_filtered.pdf",sep=''),width=7,height=7)
+plot_boxes(make_dt(quant_norm_counts$E))
+dev.off()
+
+# ## plot log2 CPM before and after filtering
+# pdf(paste(outplot_dir,"density_quant_norm_rpkm.pdf",sep=''),width=7,height=7)
+# plot_densities(make_dt(quant_norm_counts))
+# dev.off()
 
 ##------------------------------
 ## Clustering: PCA + Heatmap 
 ##------------------------------
-pca_rpkm_quantnorm_counts <- pca(t(quant_norm_counts$counts),ncomp=5,scale=F) 
+pca_cpm_quantnorm_counts <- pca(t(quant_norm_counts$E),ncomp=5,scale=T) 
 
-pca_plot <- function(pca_results,components,cols){
+pca_plot <- function(pca_results,components){
     prop_exp_var = pca_results$prop_expl_var$X[c(components)]
 
     label_plot <-function(comp){
@@ -93,7 +173,7 @@ pca_plot <- function(pca_results,components,cols){
 
     plot <-ggplot(df,aes(x=x,y=y,col=group))+
     geom_point(size=3)+
-    scale_color_manual(values = cols) +
+    scale_color_manual(values = human_chimp_col) +
     xlab(label_plot(prop_exp_var[1]))+
     ylab(label_plot(prop_exp_var[2]))+
     theme(
@@ -106,9 +186,14 @@ pca_plot <- function(pca_results,components,cols){
   return(plot)
 }
 
-pdf(paste(outplot_dir,"pca_rpkm_quantnorm_counts.pdf",sep=''),width = 7, height = 7)
-pca_plot(pca_rpkm_quantnorm_counts,c(1:2),c('#14213d','#fca311'))
+pdf(paste(outplot_dir,"pca_cpm_quantnorm_counts.pdf",sep=''),width = 7, height = 7)
+pca_plot(pca_cpm_quantnorm_counts,c(1:2))
 dev.off()
+
+## add sex covariate 
+quant_norm_counts <- DGEList(quant_norm_counts)
+quant_norm_counts$sex <- c('F','M','F','F','M','M','M','F','M','F','M','F') # order follows the samples_names vector
+quant_norm_counts$samples <- mutate(quant_norm_counts$samples,'group'=ifelse(rownames(quant_norm_counts$samples) %like% 'C','chimp','human'))
 
 ## check whether PCs are associated with things such as lib.sizes, FRiP, sex, other than species 
 ## read frip scores 
@@ -210,7 +295,7 @@ final_results <- data.frame(results$table)
 final_results <- dplyr::mutate(final_results,'peakID'= rownames(final_results))%>%as.data.table()
 
 final_results <-  final_results[
-        ,FDR:=p.adjust(final_results$PValue,method = 'fdr')
+        ,FDR:=p.adjust(final_results$PValue,method = 'BH')
         ][
             ,DA:=as.factor(ifelse(FDR<=0.05, 'da','non_da'))
             ][
@@ -239,22 +324,22 @@ geom_vline(xintercept=300, linetype='dashed', color='black', size=0.5)+
 theme_bw()
 dev.off()
 
-##--------------------
-## Generate MA plot
-##--------------------
-ma_plot = function(df){
-    plot <- ggplot(df,aes(x = logCPM, y = logFC, col = peak_species)) + 
-        geom_point() + 
-        # scale_color_manual(values = da_palette) + 
-        geom_smooth(inherit.aes=F, aes(x = logCPM, y = logFC), method = "loess",se = F) + # smoothed loess fit; can add span=0.5 to reduce computation load/time
-        geom_hline(yintercept = 0) + labs(col = NULL)+
-        theme_bw()
-        return(plot)
-}
+# ##--------------------
+# ## Generate MA plot
+# ##--------------------
+# ma_plot = function(df){
+#     plot <- ggplot(df,aes(x = logCPM, y = logFC, col = peak_species)) + 
+#         geom_point() + 
+#         # scale_color_manual(values = da_palette) + 
+#         geom_smooth(inherit.aes=F, aes(x = logCPM, y = logFC), method = "loess",se = F) + # smoothed loess fit; can add span=0.5 to reduce computation load/time
+#         geom_hline(yintercept = 0) + labs(col = NULL)+
+#         theme_bw()
+#         return(plot)
+# }
 
-pdf(paste(outplot_dir,"da_test_ma_plot.pdf",sep=''),width = 7, height = 7)
-ma_plot(final_results)
-dev.off()
+# pdf(paste(outplot_dir,"da_test_ma_plot.pdf",sep=''),width = 7, height = 7)
+# ma_plot(final_results)
+# dev.off()
 
 ## Volcano plot for DA regions
 ## color points with species they belong to

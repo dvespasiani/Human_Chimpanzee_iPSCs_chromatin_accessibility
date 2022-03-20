@@ -1,6 +1,0 @@
-
-genome: [hg38,pantro5]
-species: ['human','chimp']
-hocomoco_file: /data/projects/punim0586/dvespasiani/Files/Annotation_and_other_files/MEME_files/HOCOMOCOv11_core_HUMAN_mono_meme_format.meme
-jaspar_file: /data/projects/punim0586/dvespasiani/Files/Annotation_and_other_files/MEME_files/JASPAR2020_CORE_vertebrates_non-redundant_pfms_meme.meme
-motif_cluster: /data/projects/punim0586/dvespasiani/Files/Annotation_and_other_files/Motifs_clusters/motifs_clusters

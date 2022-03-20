@@ -1,5 +1,10 @@
 ## use this script to generate a fasta file containing the sequence
 ## in the respective species coordinates for each the peak 
+##--------------------------------------------------------------------------------------------------
+## run script from command line as 
+## Rscript ./get_dna_seq_peaks.R input output
+## e.g., Rscript ./get_dna_seq_peaks.R da_results.txt output/sequences/all_peaks_seq.fa
+##--------------------------------------------------------------------------------------------------
 
 library(dplyr)
 library(data.table)
@@ -12,6 +17,12 @@ setwd('/data/projects/punim0595/dvespasiani/Human_Chimpanzee_iPSCs_chromatin_acc
 scripts_dir = './scripts/'
 source(paste(scripts_dir,'utils.R',sep=''))
 
+args = commandArgs(trailingOnly=TRUE)
+
+wd='/data/projects/punim0595/dvespasiani/Human_Chimpanzee_iPSCs_chromatin_accessibility/post_processing_analyses/'
+input=args[1]
+output=paste(wd,args[2],sep='')
+
 if (genome =='hg38'){
     library(BSgenome.Hsapiens.UCSC.hg38)
     species_bsgenome <- Hsapiens
@@ -20,22 +31,28 @@ if (genome =='hg38'){
     species_bsgenome <- Ptroglodytes
 }
 
-output_dir <- create_dir(outdir,'sequences')
+## get input peaks
+# peaks <- read_da_results(input)
 
-## get DA peaks
-da_file <- paste(da_dir,genome,'/da_results.txt',sep='')
-da_results <- fread(da_file,sep='\t',header=T,select=c(range_keys,'DA','peakID','peak_species'))%>%split(by='DA')
+if (input %like% 'da_results'){
+    print(paste('reading in ', input,sep=''))
+    peaks <- read_da_results(input)
+    }else{
+    peaks <- fread(input,sep='\t',header=T)
+}
+
+if ('peakID' %in% names(peaks)){
+    peaks <- peaks
+}else{
+    peaks<-peaks[
+        ,peakID:=paste('peak_',1:nrow(peaks),sep='')
+    ]
+}
 
 ## get DNA sequences 
-dna_sequences <- lapply(da_results,function(x){ 
-    sequence <- copy(x)[
-        ,sequence:=as.character(getSeq(species_bsgenome, seqnames,start, end))
-        ]
-    dna_seq <- DNAStringSet(sequence$sequence)
-    names(dna_seq) = sequence$peakID
-    return(dna_seq)
-})
+dna_sequences <- copy(peaks)[,sequence:=as.character(getSeq(species_bsgenome, seqnames,start, end))]
+dna_seq <- DNAStringSet(dna_sequences$sequence)
+names(dna_seq) = dna_sequences$peakID
 
-filenames <- paste(output_dir,names(dna_sequences),'_',genome,'_peak_sequence','.fa',sep='')
-mapply(writeXStringSet, dna_sequences, file = filenames,append=F,compress=F, compression_level=NA, format="fasta")
-
+writeXStringSet(dna_seq, output, append=FALSE,compress=FALSE, compression_level=NA, format="fasta")
+     

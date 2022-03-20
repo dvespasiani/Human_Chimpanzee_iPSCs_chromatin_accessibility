@@ -1,3 +1,61 @@
+source /usr/local/module/spartan_new.sh
+conda activate atac 
+
+helpFunction(){
+   echo ""
+   echo "Usage: $0 -g genome"
+   echo -e "\t-g genome to index"
+   exit 1 # Exit script after printing help
+}
+
+while getopts "g:" flag; do
+    case "${flag}" in
+        g) genome="$OPTARG";;
+        ?) helpFunction ;; # Print helpFunction 
+    esac
+done
+
+## directories
+wd='/data/projects/punim0595/dvespasiani/Human_Chimpanzee_iPSCs_chromatin_accessibility'
+g='panTro5'
+genome_dir="$wd/$g/data/genome"
+index_dir="$wd/$g/genome_mappability/indexed_genome"
+mappability_dir="$wd/genome_mappability/mappability"
+
+## create all dirs 
+if [ ! -d "$mappability_dir" ]; then
+  mkdir -p "$mappability_dir";
+fi
+
+## index genome
+genmap index -FD $genome_dir -I  $index_dir
+
+## calculate mappability
+genmap map -K 50 -E 2 -I $index_dir -O $mappability_dir --bed --exclude-pseudo -T 50
+
+## polish file by removing info on unwanted chromosomes
+filename=$(find *bed)
+awk '$1!="/random/ || /Un/ || /./"' $filename > cleaned
+
+rm $filename
+awk '!/Un/' cleaned > $filename
+rm cleaned
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ## load atac conda env as this is where program is installed
 conda activate atac
 
