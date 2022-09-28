@@ -80,25 +80,46 @@ read_peaks <- function(peak_file){
 human_peaks <- read_peaks('human_filtered_orth_consensus_peaks.txt')
 chimp_peaks <- read_peaks('chimp_filtered_orth_consensus_peaks.txt')
 
-## convert the species-specific peaks to the other genome coordinates and then attach the granges
-human_ortfilt_chimp_coord <- convert_coord(human_peaks,'hg38ToPanTro5.over.chain')
+## convert peaks into the other genome coordinates and then attach the granges
+human_peaks_chimp_coord <- convert_coord(human_peaks,'hg38ToPanTro5.over.chain')
 
-orth_peaks_overlap = foverlaps(human_ortfilt_chimp_coord,chimp_peaks,type='any')%>%na.omit()
-orth_peaks_overlap = orth_peaks_overlap[,width:=i.end-i.start][width>=150 & width<=2000]
-duplicated_human_chimp_peaks <- copy(orth_peaks_overlap)[,c('peakID','i.peakID')]%>%unique()
+common_peaks = foverlaps(human_peaks_chimp_coord,chimp_peaks,type='any')%>%na.omit()
+unique_common_peaks = copy(common_peaks)[,c('peakID','i.peakID')]%>%unique()
+unique_common_peaks = unique_common_peaks[,duphuman:=.N,by=.(i.peakID)][,dupchimp:=.N,by=.(peakID)][duphuman == 1 & dupchimp==1]%>%setnames(old=c('peakID','i.peakID'),new=c('chimp_peakID','human_peakID'))
 
-duplicated_human_chimp_peaks =duplicated_human_chimp_peaks[,duphuman:=.N,by=.(i.peakID)][,dupchimp:=.N,by=.(peakID)][duphuman == 1 & dupchimp==1]
+human_peaks = human_peaks[,peaktype:= ifelse(peakID %in% unique_common_peaks$human_peakID,'common','human_sp')]
+chimp_peaks = chimp_peaks[,peaktype:= ifelse(peakID %in% unique_common_peaks$chimp_peakID,'common','chimp_sp')]
 
-orth_peaks_overlap = orth_peaks_overlap[peakID %in% duplicated_human_chimp_peaks$peakID]%>%setnames(old=c('peakID','i.peakID'),new=c('chimp_peakID','human_peakID'))
-orth_peaks_overlap = orth_peaks_overlap[,peakID_info:=paste(chimp_peakID,human_peakID,sep='.')]
+## convert species specific peaks to the other coordinates
+## then add these peaks to the other species 
+human_sp_peaks_pantro5 = convert_coord(human_peaks[peaktype=='human_sp'],'hg38ToPanTro5.over.chain')
+chimp_sp_peaks_hg38 = convert_coord(chimp_peaks[peaktype=='chimp_sp'],'panTro5ToHg38.over.chain')
 
-final_human_peaks = copy(human_peaks)[peakID %in%orth_peaks_overlap$human_peakID]%>%makeGRangesFromDataFrame(keep.extra.columns=T)
-final_chimp_peaks = copy(chimp_peaks)[peakID %in%orth_peaks_overlap$chimp_peakID]%>%makeGRangesFromDataFrame(keep.extra.columns=T)
+make_final_peaks <- function(peaks){
+    final_peaks <- copy(peaks)
+    final_peaks <- final_peaks[,peakID:=paste('peak_',1:nrow(final_peaks),sep='')]%>%makeGRangesFromDataFrame(keep.extra.columns=T)
+    return(final_peaks)
+}
+
+final_human_peaks = make_final_peaks(rbind(human_peaks,chimp_sp_peaks_hg38))
+final_chimp_peaks = make_final_peaks(rbind(chimp_peaks,human_sp_peaks_pantro5))
+
+pdf(paste(outplot_dir,"distribution_peak_sizes_preDA.pdf",sep=''),width=7,height=5)
+options(scipen=999)
+df <- as.data.table(copy(final_human_peaks))
+ggplot(df,aes(x=width,fill=peaktype))+
+geom_density(alpha=0.5)+
+scale_fill_manual(values=c('#83c5be','#e29578','#006d77'))+
+xlab('Peak size')+ ylab('Density')+
+theme_classic()+
+theme()
+dev.off()
+
 
 ##---------------------------------------
 ## Differential Accessibility
 ##---------------------------------------
-param <- readParam(pe = "both",restrict=standard_chr,max.frag=1000)
+param <- readParam(pe = "both",restrict=standard_chr,max.frag=2000)
 
 get_bamReads = function(organimsDir,pattern){
     bamReads = list.files(paste0(organimsDir,bamDir), 
@@ -112,7 +133,7 @@ pantro5_bams = get_bamReads('./panTro5/',"^C.*_tn5_shifted_sorted.bam$")
 ## count number reads overlapping orthologous consensus peaks 
 ## and convert to RPKM
 raw_counts_human <- regionCounts(hg38_bams, final_human_peaks,param=param)%>%asDGEList()
-rownames(raw_counts_human) = orth_peaks_overlap$peakID_info
+# rownames(raw_counts_human) = orth_peaks_overlap$peakID_info
 colnames(raw_counts_human) = samples_names[7:12]
 
 human_peaks_width <- copy(final_human_peaks@ranges@width)
@@ -121,7 +142,7 @@ rpkm_counts_human <- copy(raw_counts_human)
 rpkm_counts_human$counts <- rpkm(raw_counts_human$counts,gene.length=human_peaks_width)
 
 raw_counts_chimp <- regionCounts(pantro5_bams, final_chimp_peaks,param=param)%>%asDGEList()
-rownames(raw_counts_chimp) = orth_peaks_overlap$peakID_info
+# rownames(raw_counts_chimp) = orth_peaks_overlap$peakID_info
 colnames(raw_counts_chimp) = samples_names[1:6]
 
 chimp_peaks_width <-copy(final_chimp_peaks@ranges@width)
@@ -132,8 +153,13 @@ rpkm_counts_chimp$counts <- rpkm(raw_counts_chimp$counts,gene.length=chimp_peaks
 merged_raw_counts = cbind(raw_counts_chimp,raw_counts_human)
 merged_raw_counts$samples <- mutate(merged_raw_counts$samples,'group'=ifelse(rownames(merged_raw_counts$samples) %like% 'C','chimp','human'))
 
+mat_rownames = final_human_peaks@elementMetadata@listData$peakID
+# paste(paste('c:',final_chimp_peaks@elementMetadata@listData$peakID,sep=''),paste('h:',final_human_peaks@elementMetadata@listData$peakID,sep=''),sep='.')
+rownames(merged_raw_counts) = mat_rownames
+
 merged_rpkm_counts = cbind(rpkm_counts_chimp,rpkm_counts_human)
 merged_rpkm_counts$samples <- mutate(merged_rpkm_counts$samples,'group'=ifelse(rownames(merged_rpkm_counts$samples) %like% 'C','chimp','human'))
+rownames(merged_rpkm_counts) =mat_rownames
 
 ##---------------------
 ## Filtering
@@ -158,23 +184,21 @@ for (i in 1:12){
 dt_list = rbindlist(dt_list)
 dt_list[is.na(dt_list)]=0
 
-keep <- filterByExpr(merged_raw_counts,large.n=3)
+keep <- filterByExpr(merged_raw_counts)
 # keep <- rowMeans(cpm_counts$counts) > 2
 # keep <- keep[apply(merged_raw_counts$counts,1, function(x) all(x!=0))),]
 raw_counts_filtered <- copy(merged_raw_counts)[keep,, keep.lib.sizes=FALSE]
 rpkm_counts_filtered <- copy(merged_rpkm_counts)[keep,, keep.lib.sizes=FALSE]
+# raw_counts_filtered <-  copy(merged_raw_counts)[rowSums(copy(merged_raw_counts$counts) > 10) >= 3, , keep.lib.sizes=FALSE]
+# rpkm_counts_filtered <- copy(merged_rpkm_counts)[rownames(raw_counts_filtered),, keep.lib.sizes=FALSE]
 dim(merged_raw_counts)
 dim(raw_counts_filtered)
 
 # filtered_peak_width <- copy(peak_width)[names(peak_width) %in% rownames(raw_counts_filtered) ]
-
 # rpkm_counts_filtered <- copy(raw_counts_filtered)
 # rpkm_counts_filtered$counts <- rpkm(rpkm_counts_filtered$counts,gene.length = filtered_peak_width)
-
-# df[rowSums(df > 10) >= 1, ]
-
 pdf(paste(outplot_dir,"density_reads_in_peaks_filtered.pdf",sep=''),width=7,height=7)
-plot_densities(make_dt(cpm(raw_counts_filtered$counts,log=T,prior.counts = prior_counts)))
+plot_densities(make_dt(cpm(raw_counts_filtered$counts,log=T,prior.counts = prior_counts))
 dev.off()
 
 ##------------------
@@ -184,23 +208,23 @@ dev.off()
 # cpm_counts_filtered$counts = cpm(cpm_counts_filtered$counts,log=T,prior.counts= prior_counts)
 
 pdf(paste(outplot_dir,"distribution_unnormalised_filtered_counts.pdf",sep=''),width=7,height=7)
-plot_boxes(make_dt(cpm(raw_counts_filtered$counts,log=T,prior.counts = prior_counts)))
+plot_boxes(make_dt(log2(rpkm_counts_filtered$counts+prior_counts)),ylab='log2 RPKM')
 dev.off()
 
-## tmm normalisation
-tmm_norm_counts <- calcNormFactors(copy(raw_counts_filtered),method='TMM')
+# ## tmm normalisation
+# tmm_norm_counts <- calcNormFactors(copy(raw_counts_filtered),method='TMM')
 
-pdf(paste(outplot_dir,"distribution_tmm_normalised_filtered_counts.pdf",sep=''),width=7,height=7)
-plot_boxes(make_dt(cpm(tmm_norm_counts$counts,log=T,prior.counts = prior_counts)),ylab='log2 CPM')
-dev.off()
+# pdf(paste(outplot_dir,"distribution_tmm_normalised_filtered_counts.pdf",sep=''),width=7,height=7)
+# plot_boxes(make_dt(cpm(tmm_norm_counts$counts,log=T,prior.counts = prior_counts)),ylab='log2 CPM')
+# dev.off()
 
-## loess
-loess_norm_counts <- copy(raw_counts_filtered)
-loess_norm_counts$counts <- normalizeBetweenArrays(loess_norm_counts$counts, method = "cyclicloess")
+# ## loess
+# loess_norm_counts <- copy(raw_counts_filtered)
+# loess_norm_counts$counts <- normalizeBetweenArrays(loess_norm_counts$counts, method = "cyclicloess")
 
-pdf(paste(outplot_dir,"distribution_loess_normalised_filtered_counts.pdf",sep=''),width=7,height=7)
-plot_boxes(make_dt(cpm(loess_norm_counts$counts,log=T,prior.counts = prior_counts)),ylab='log2 CPM')
-dev.off()
+# pdf(paste(outplot_dir,"distribution_loess_normalised_filtered_counts.pdf",sep=''),width=7,height=7)
+# plot_boxes(make_dt(cpm(loess_norm_counts$counts,log=T,prior.counts = prior_counts)),ylab='log2 CPM')
+# dev.off()
 
 ## get RPKM and quantile normalise these
 quantnorm_rpkm_counts <- copy(rpkm_counts_filtered)
@@ -209,7 +233,7 @@ quantnorm_rpkm_counts$counts <- normalizeBetweenArrays(quantnorm_rpkm_counts$cou
 
 # quantnorm_raw_counts <- copy(raw_counts_filtered)
 # quantnorm_raw_counts$counts <- normalizeBetweenArrays(quantnorm_raw_counts$counts, method = "quantile")
-# # quant_norm_counts <- voom(raw_counts_filtered$counts, normalize.method = "quantile")
+## quant_norm_counts <- voom(raw_counts_filtered$counts, normalize.method = "quantile")
 
 pdf(paste(outplot_dir,"distribution_quantile_normalised_filtered_counts.pdf",sep=''),width=7,height=7)
 plot_boxes(make_dt(log2(quantnorm_rpkm_counts$counts+prior_counts)),ylab='log2 RPKM')
@@ -373,11 +397,17 @@ results <- glmQLFTest(fit, contrast=makeContrasts(human-chimp,levels=model_speci
 # results <- glmTreat(fit, contrast=makeContrasts(human-chimp,levels=model_species_sex_frip),lfc = log2(1.5))
 
 ## get df with final results_df
-peaks_df <- copy(orth_peaks_overlap)
+## peaks to keep 
+human_peaks_to_keep <- copy(as.data.table(final_human_peaks))[peakID %in% rownames(results$table),][,c('width','strand'):=NULL]
+chimp_peaks_to_keep <- copy(as.data.table(final_chimp_peaks))[peakID %in% rownames(results$table),][,c('width','strand'):=NULL]
 
+# final_results <- data.frame(results$table)
+# final_results <- dplyr::mutate(final_results,'peakID'= rownames(final_results))%>%as.data.table()
+# final_results <- final_results[, c("chimp_peakID", "human_peakID") := tstrsplit(peakID, ".", fixed=TRUE)][,peakID:=NULL]
+
+## these are in hg38 coordinates
 final_results <- data.frame(results$table)
-final_results <- dplyr::mutate(final_results,'peakID'= rownames(final_results))%>%as.data.table()
-final_results <- final_results[, c("chimp_peakID", "human_peakID") := tstrsplit(peakID, ".", fixed=TRUE)][,peakID:=NULL]
+final_results <- dplyr::mutate(final_results,'peakID'= human_peaks_to_keep$peakID)%>%as.data.table()
 
 pval_threshold = 0.01
 
@@ -390,20 +420,25 @@ final_results <-  final_results[
 ] 
 
 nrow(final_results[DA=='da'])
+# [1] 52352
 nrow(final_results[DA=='da'])/nrow(final_results)
+# [1] 0.3460923
 nrow(final_results[DA=='da'][logFC>0])/nrow(final_results[DA=='da'])
+# [1] 0.5401322
 
-final_results <- inner_join(
-    final_results,as.data.table(final_human_peaks),by=c('human_peakID'='peakID')
-    )%>%setnames(
-        old=c(range_keys),new=c(paste('human_',range_keys,sep=''))
-        )%>%inner_join(
-            as.data.table(final_chimp_peaks),by=c('chimp_peakID'='peakID')
-            )%>%setnames(
-                old=c(range_keys),new=c(paste('chimp_',range_keys,sep=''))
-                )%>%dplyr::select(
-                    -c(contains('width'),contains('strand'))
-)%>%as.data.table()
+# final_results <- inner_join(
+#     final_results,as.data.table(final_human_peaks),by=c('human_peakID'='peakID')
+#     )%>%setnames(
+#         old=c(range_keys),new=c(paste('human_',range_keys,sep=''))
+#         )%>%inner_join(
+#             as.data.table(final_chimp_peaks),by=c('chimp_peakID'='peakID')
+#             )%>%setnames(
+#                 old=c(range_keys),new=c(paste('chimp_',range_keys,sep=''))
+#                 )%>%dplyr::select(
+#                     -c(contains('width'),contains('strand'))
+# )%>%as.data.table()
+
+final_results <- final_results[human_peaks_to_keep,on='peakID',nomatch=0]
 
 
 #             [
@@ -431,7 +466,7 @@ dev.off()
 
 ## check distribution peak lengths between da and nonda peaks
 pdf(paste(outplot_dir,"da_test_peak_sizes.pdf",sep=''),width = 7, height = 7)
-df <- copy(final_results)[,width:=human_end-human_start]
+df <- copy(final_results)[,width:=end-start]
 ggplot(df,aes(x=width,fill=da_species)) +
 geom_density(alpha=0.5) +
 scale_fill_manual(values=final_colors)+
@@ -487,11 +522,6 @@ dev.off()
 
 ## export DA resutls
 write.table(final_results,paste('./post_processing_analyses/',da_dir,'new_da_results.txt',sep=''),sep='\t',col.names=T,row.names = F,quote=F)
-
-
-
-
-
 
 
 

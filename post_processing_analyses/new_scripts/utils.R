@@ -1,8 +1,11 @@
 ## directories 
+basedir <- '/data/projects/punim0595/dvespasiani/Human_Chimpanzee_iPSCs_chromatin_accessibility/'
+postprocess_dir <- paste(basedir,'post_processing_analyses/',sep='')
+outdir <- paste(postprocess_dir,'output/',sep='')
+table_dir <- paste(outdir,'tables/',sep='')
+plot_dir <- paste(outdir,'plots/',sep='')
 tads_dir <-  './output/TADs/'
 da_dir <- './output/DA/'
-plot_dir <- './output/plots/'
-outdir <- './output/'
 bamDir  <- "/output/Alignment/Files"
 genome <- 'hg38'
 
@@ -61,6 +64,12 @@ chrom_state_colors <- c(
   '#3A3838','#808080','#DCDCDC'
 )
 names(chrom_state_colors) <- chrom_states
+
+plurip_tf_palette <- c('#c1121f','#723d46','#e29578','#606c38','#bb3e03')
+names(plurip_tf_palette) = c('nanog','oct4','sox2','ctcf','other')
+
+promoters_palette = c('#94D2BD','#F4A261','lightgray',da_palette)
+names(promoters_palette) = c('ipsc_promoters','upstream_txdb','random',names(da_palette))
 
 ##---------------------------
 ## functions
@@ -175,8 +184,8 @@ permute_data <- function(metric, peak_type, n=10000){
 
 ## read files 
 read_da_results <-  function(file,significance){
-    df <- fread(paste(da_dir,file,sep=''),sep='\t',header=T)%>%setnames(
-      old=c('human_seqnames','human_start','human_end','human_peakID'),new=c(range_keys,'peakID'))
+    df <- fread(paste(da_dir,file,sep=''),sep='\t',header=T)%>%
+    dplyr::select(c(all_of(range_keys),everything()))
     setkeyv(df,range_keys)
     return(df)
 }

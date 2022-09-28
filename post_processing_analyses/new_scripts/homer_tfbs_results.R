@@ -11,6 +11,7 @@ library(viridis)
 library(viridisLite)
 library(RColorBrewer)
 library(GenomicRanges)
+library(openxlsx)
 
 options(width=150)
 setwd('/data/projects/punim0595/dvespasiani/Human_Chimpanzee_iPSCs_chromatin_accessibility/post_processing_analyses/')
@@ -21,6 +22,7 @@ source(paste(scripts_dir,'utils.R',sep=''))
 da_peaks_dir <- './output/DA/peaks/'
 homer_dir <- './output/homer/homer_output/'
 outplot_dir <- create_dir(plot_dir,'tfbs')
+outfile_dir <- create_dir(outdir,'tables/tfbs')
 
 ##-------------
 ## read files
@@ -79,6 +81,9 @@ filtered_motifs <- copy(homer_results)[
                               ,gene_symbol:= gsub("\\..*","",gene_symbol)
 ]
 
+## export filtered motifs in excel file for supplementary
+write.xlsx(filtered_motifs[,c('gene_symbol','motif_family','pval','padj')],paste(outfile_dir,'homer_filtered_motifs.xlsx',sep=''),append=F,overwrite=T)
+
 ###  ** those motifs are already invidually enriched plus I individually analyse them (see below) ** ###
 
 ## numb and prop
@@ -126,22 +131,26 @@ de_info <- fread(
 ipsc_counts<- merge(ipsc_counts,de_info,on='EnsemblID')
 
 ## get gene symbols
-ensembl.mart <- useMart(
-    host='https://dec2016.archive.ensembl.org',
-    biomart='ENSEMBL_MART_ENSEMBL', 
-    dataset='hsapiens_gene_ensembl'
-)
+# ensembl.mart <- useMart(
+#     # host='https://dec2016.archive.ensembl.org',
+#     biomart='ENSEMBL_MART_ENSEMBL', 
+#     dataset='hsapiens_gene_ensembl'
+# )
 
-ensembl_id_gene_symbol <- getBM(
-    attributes = c('ensembl_gene_id','hgnc_symbol'), 
-    filters = 'ensembl_gene_id', 
-    values = ipsc_counts$EnsemblID,
-    mart = ensembl.mart
-)%>%as.data.table()
-names(ensembl_id_gene_symbol) = c('EnsemblID','gene_symbol')
+# ensembl_id_gene_symbol <- getBM(
+#     attributes = c('ensembl_gene_id','hgnc_symbol'), 
+#     filters = 'ensembl_gene_id', 
+#     values = ipsc_counts$EnsemblID,
+#     mart = ensembl.mart
+# )%>%as.data.table()
+# names(ensembl_id_gene_symbol) = c('EnsemblID','gene_symbol')
+
+library(org.Hs.eg.db) # remember to install it if you don't have it already
+symbols <- mapIds(org.Hs.eg.db, keys = ipsc_counts$EnsemblID, keytype = "ENSEMBL", column="SYMBOL")
+symbols <- data.table(EnsemblID=names(symbols),gene_symbol=symbols)
 
 ## add expression info
-filtered_motifs_expr <- copy(filtered_motifs)[,c('log10pval','gene_symbol','motif_family','prop_motif_in_target')]%>%full_join(ensembl_id_gene_symbol,by='gene_symbol')%>%as.data.table()  
+filtered_motifs_expr <- copy(filtered_motifs)[,c('log10pval','gene_symbol','motif_family','prop_motif_in_target')]%>%full_join(symbols,by='gene_symbol')%>%as.data.table()  
 filtered_motifs_expr <- filtered_motifs_expr[,keep:=ifelse(is.na(log10pval),'no','yes')][keep=='yes'][,keep:=NULL]
 
 mean_expr <- copy(ipsc_counts)%>%dplyr::select(c('EnsemblID','adj.P.Val',contains('mean')))
@@ -182,7 +191,7 @@ cor.test(tf_w_expr_only$log10pval,tf_w_expr_only$mean_expr_chimp)
 # pvals <- copy(genwide_motif_enrichment)[,c('DE','tf_symbol')][,p_sign:=ifelse(DE=='de','*',NA)]%>%dplyr::pull('p_sign')
 # names(pvals) = genwide_motif_enrichment$tf_symbol
 
-motifs_expr <- copy(filtered_motifs_expr)[log10pval>-log10(1e-80)]
+motifs_expr <- copy(filtered_motifs_expr)[log10pval>-log10(1e-200)]
 
 matzscore_rownames <- copy(motifs_expr$tfsymbol_fam)
 mat_zscore <- copy(motifs_expr)[,log10pval]%>%as.matrix()
@@ -215,9 +224,12 @@ mat_expr <- log2(mat_expr+2)
 mat_expr[is.na(mat_expr)]<-0
 rownames(mat_expr) = matzscore_rownames
 
-colfun_expr = circlize::colorRamp2(c(seq(min(mat_expr),max(mat_expr),2.5)), c('lightgray',"#FFFF3F",'#BFD200',"#2B9348"))
+colfun_expr = circlize::colorRamp2(c(seq(min(mat_expr),max(mat_expr),2.5)), c('gray82',"#FFFF3F",'#BFD200',"#2B9348"))
 
-col_depval <- circlize::colorRamp2(c(seq(min(de_pval),max(de_pval),2.5)), c('lightgray',viridis(4)))
+col_depval <- circlize::colorRamp2(c(seq(min(de_pval),max(de_pval),2.5)), c('gray82',c("#00b4d8","#0077b6","#023e8a","#03045e")))
+
+# c("#03045e","#023e8a","#0077b6","#0096c7","#00b4d8","#48cae4","#90e0ef","#ade8f4","#caf0f8")
+
 
 # depval_colors <- viridis(length(de_pval))
 # names(depval_colors) = names(de_pval)
@@ -241,7 +253,7 @@ lgd_pvalue = Legend(
   direction = "horizontal"
 )
 
-pdf(paste(outplot_dir,'heatmap_expressed_enriched_motifs.pdf',sep=''),width=7,height = 20)
+pdf(paste(outplot_dir,'heatmap_expressed_enriched_motifs.pdf',sep=''),width=7,height = 10)
 draw(
   heatmap_zscore+heatmap_expr,
   annotation_legend_list = list(lgd_pvalue),
@@ -254,14 +266,15 @@ dev.off()
 ## pluripotency motifs
 ##------------------------
 pluripotency_motif_files <- list.files('output/homer/homer_output',full.names=T,recursive=T,pattern=c('discovered.txt'))
+plurip_filnames = gsub("\\/.*","",stringr::str_remove(pluripotency_motif_files,'output/homer/homer_output/'))
 
 pluripotency_motifs<- lapply(pluripotency_motif_files,function(x){
   results <- fread(x,sep='\t',header=T,drop=c("Motif Name",'Strand'))%>%setnames(old=1,new='peakID')
-  results <- results[,motif_length:=nchar(Sequence)][,rank_score:=round(MotifScore/max(MotifScore),2)][rank_score>=0.5]
+  results <- results[,motif_length:=nchar(Sequence)][,rank_score:=round(MotifScore/max(MotifScore),2)]
   return(results)
   }
 )
-names(pluripotency_motifs) = c('oct4','sox2','nanog','ctcf')
+names(pluripotency_motifs) = plurip_filnames
 pluripotency_motifs <- Map(mutate,pluripotency_motifs,tf=names(pluripotency_motifs))%>%rbindlist()
 
 ## add genomic region
@@ -278,15 +291,24 @@ pluripotency_motifs <- pluripotency_motifs[
         ,motif_end:=motif_start+motif_length
 ]
 
+## plot distribution number of motifs by rank scores
+pdf(paste(outplot_dir,'distribution_ranked_motif_scores.pdf',sep=''),width=10,height=7)
+df <- copy(pluripotency_motifs)[,c(..range_keys,'rank_score')]%>%unique()
+ggplot(df,aes(x=rank_score))+geom_bar()+
+ylab('number of motifs')+
+scale_x_continuous(
+  name ='Ranked motif score',
+  limit =  range(df$rank_score),
+  breaks =  seq(0,1,0.1))+
+theme_classic()+
+theme()
+dev.off()
 
 ## proportion of original peaks with 
-numb_peaks_w_plurip_tf <- copy(pluripotency_motifs$peakID)%>%unique()%>%length()
+numb_peaks_w_plurip_tf <- copy(top_pluripotency_motifs$peakID)%>%unique()%>%length()
 numb_peaks <- copy(da_results$peakID)%>%length()
 numb_peaks_w_plurip_tf/numb_peaks*100
-#[1] 34.67562
-
-## venn diagramm number of peaks with 1,2 or 3 motifs 
-## plot venn diagramm of shared genes between peaks
+#[1] 79.69008
 
 tfs <- copy(pluripotency_motifs)%>%split(by='tf')%>%lapply(function(x)x=x[,peakID]%>%unique())
 plurip_tf_palette <- c('#c1121f','#723d46','#e29578','#606c38','lightgray')
@@ -394,14 +416,8 @@ conservation_peaks_wout_tf <- copy(conservation_scores)[pluripotency=='no'][,tf:
 
 ## plot conservation score 
 comparisons = list(
-  c("nanog",'oct4'),
-  c('nanog','sox2'),
   c("nanog",'other'),
-  c('oct4','sox2'),
   c('oct4','other'),
-  c('ctcf','nanog'),
-  c('ctcf','sox2'),
-  c('ctcf','oct4'),
   c('ctcf','other'),
   c('sox2','other')
 )
@@ -427,27 +443,55 @@ ggplot(df,aes(x=factor(tf,level=tf_order),y=avg_phastcons,fill=tf))+
 dev.off()
 
 ## look if DA peaks are enriched for these TFs (by permutation)
-numb_permutations = 10000
-tf_da_observed_value = as.data.table(table(copy(unique(pluripotency_motifs[,c('peakID','tf','DA')][DA=='da']))$tf))%>%setnames(old=c(1:2),new=c('tf','score'))%>%split(by='tf')
+permute_devtfs <- function(x){
+  numb_permutations = 1000
+  tf_da_observed_value = as.data.table(table(copy(unique(x[,c('peakID','tf','DA')][DA=='da']))$tf))%>%setnames(old=c(1:2),new=c('tf','score'))%>%split(by='tf')
 
-tf_da_list_permutations = list()
-for(i in 1:numb_permutations){
-      new_da_col <- sample(pluripotency_motifs$DA,nrow(pluripotency_motifs),replace=F)
-      new_df <- copy(pluripotency_motifs)[,DA:=new_da_col]
-      permuted_scores=table(unique(new_df[,c('peakID','tf','DA')][DA=='da'])$tf)
-      tf_da_list_permutations[[i]] = as.data.table(permuted_scores)[,permutation:=i]%>%setnames(old=c(1:2),new=c('tf','permuted_score'))
-}
-tf_da_permutation <- rbindlist(tf_da_list_permutations)%>%split(by='tf')
-
-tf_da_enrichment = purrr::map2(tf_da_permutation,tf_da_observed_value,function(p,o){
-  zscore = (o$score-mean(p$permuted_score))/sd(p$permuted_score)
-  pvalue = 2*pnorm(q=abs(zscore), lower.tail=FALSE)
-  stat =  data.table(zscore = zscore,pval=pvalue)
-  return(stat)
+  tf_da_list_permutations = list()
+  for(i in 1:numb_permutations){
+        new_da_col <- sample(x$DA,nrow(x),replace=F)
+        new_df <- copy(x)[,DA:=new_da_col]
+        permuted_scores=table(unique(new_df[,c('peakID','tf','DA')][DA=='da'])$tf)
+        tf_da_list_permutations[[i]] = as.data.table(permuted_scores)[,permutation:=i]%>%setnames(old=c(1:2),new=c('tf','permuted_score'))
   }
-)
-tf_da_enrichment <- Map(mutate,tf_da_enrichment,tf=names(tf_da_enrichment))%>%rbindlist()%>%setorderv('zscore',1)
-tf_da_enrichment <- tf_da_enrichment[,abslog_zscore:=log(abs(zscore))][,log_zscore:=ifelse(zscore<0,-abslog_zscore,abslog_zscore)]
+  tf_da_permutation <- rbindlist(tf_da_list_permutations)%>%split(by='tf')
+
+  enrichment = purrr::map2(tf_da_permutation,tf_da_observed_value,function(p,o){
+    zscore = (o$score-mean(p$permuted_score))/sd(p$permuted_score)
+    pvalue = 2*pnorm(q=abs(zscore), lower.tail=FALSE)
+    stat =  data.table(zscore = zscore,pval=pvalue)
+    return(stat)
+    }
+  )
+  enrichment <- Map(mutate,enrichment,tf=names(enrichment))%>%rbindlist()%>%setorderv('zscore',1)
+  enrichment <- enrichment[,abslog_zscore:=log(abs(zscore))][,log_zscore:=ifelse(zscore<0,-abslog_zscore,abslog_zscore)]
+  
+  return(enrichment)
+}
+# numb_permutations = 10000
+# tf_da_observed_value = as.data.table(table(copy(unique(top_pluripotency_motifs[,c('peakID','tf','DA')][DA=='da']))$tf))%>%setnames(old=c(1:2),new=c('tf','score'))%>%split(by='tf')
+
+# tf_da_list_permutations = list()
+# for(i in 1:numb_permutations){
+#       new_da_col <- sample(pluripotency_motifs$DA,nrow(pluripotency_motifs),replace=F)
+#       new_df <- copy(pluripotency_motifs)[,DA:=new_da_col]
+#       permuted_scores=table(unique(new_df[,c('peakID','tf','DA')][DA=='da'])$tf)
+#       tf_da_list_permutations[[i]] = as.data.table(permuted_scores)[,permutation:=i]%>%setnames(old=c(1:2),new=c('tf','permuted_score'))
+# }
+# tf_da_permutation <- rbindlist(tf_da_list_permutations)%>%split(by='tf')
+
+# tf_da_enrichment = purrr::map2(tf_da_permutation,tf_da_observed_value,function(p,o){
+#   zscore = (o$score-mean(p$permuted_score))/sd(p$permuted_score)
+#   pvalue = 2*pnorm(q=abs(zscore), lower.tail=FALSE)
+#   stat =  data.table(zscore = zscore,pval=pvalue)
+#   return(stat)
+#   }
+# )
+# tf_da_enrichment <- Map(mutate,tf_da_enrichment,tf=names(tf_da_enrichment))%>%rbindlist()%>%setorderv('zscore',1)
+# tf_da_enrichment <- tf_da_enrichment[,abslog_zscore:=log(abs(zscore))][,log_zscore:=ifelse(zscore<0,-abslog_zscore,abslog_zscore)]
+
+alltfs_daenrichment <- permute_devtfs(pluripotency_motifs) 
+toptfs_daenrichment <- permute_devtfs(top_pluripotency_motifs) 
 
 plot_enrichments <- function(enrich_res,column,palette,xlab){
   df <- copy(enrich_res)[,column_to_reorder:=column]
@@ -467,11 +511,52 @@ plot_enrichments <- function(enrich_res,column,palette,xlab){
 
 
 pdf(paste(outplot_dir,'enrichm_pluripotency_tf_davsnonda.pdf',sep=''),width=8,height = 5)
-plot_enrichments(enrich_res=tf_da_enrichment,column=tf_da_enrichment$tf,palette=plurip_tf_palette[-5],xlab='TF')
+plot_enrichments(enrich_res=alltfs_daenrichment,column=alltfs_daenrichment$tf,palette=plurip_tf_palette[-5],xlab='TF')
 dev.off()
 
 
-# ##----------------
+pdf(paste(outplot_dir,'enrichm_top_pluripotency_tf_davsnonda.pdf',sep=''),width=8,height = 5)
+plot_enrichments(enrich_res=toptfs_daenrichment,column=toptfs_daenrichment$tf,palette=plurip_tf_palette[-5],xlab='TF')
+dev.off()
+
+# ## for each of these TFs make volcano plot of logFC
+# volcano_plot <-function(df){
+#     plot <- ggplot(df) + 
+#     geom_point(aes(x = logFC,y =-log10(FDR), col = tf),alpha=0.2)+
+#     # scale_color_manual(values = da_palette) + 
+#     geom_hline(yintercept=-log10(0.01), linetype='dashed', color='black', size=0.5)+
+#     geom_vline(xintercept=0, linetype='dashed', color='black', size=0.5)+
+#     scale_colour_manual(values=plurip_tf_palette)+
+#     theme_classic()+
+#     xlim(-8,+8)+
+#     theme(
+#         legend.position = "bottom",
+#         axis.ticks.x =element_blank()
+#         )
+#     return(plot)
+# }
+
+# ctcf_motifs <- copy(pluripotency_motifs)[tf=='ctcf']
+# nanog_motifs <- copy(pluripotency_motifs)[tf=='nanog']
+# oct4_motifs <- copy(pluripotency_motifs)[tf=='oct4']
+# sox2_motifs <- copy(pluripotency_motifs)[tf=='sox2']
+
+# pdf(paste(outplot_dir,'ctcf_volcano.pdf',sep=''),width=7,height = 7)
+# volcano_plot(ctcf_motifs)
+# dev.off()
+
+# pdf(paste(outplot_dir,'nanog_volcano.pdf',sep=''),width=7,height = 7)
+# volcano_plot(nanog_motifs)
+# dev.off()
+
+# pdf(paste(outplot_dir,'oct4_volcano.pdf',sep=''),width=7,height = 7)
+# volcano_plot(oct4_motifs)
+# dev.off()
+
+# pdf(paste(outplot_dir,'sox2_volcano.pdf',sep=''),width=7,height = 7)
+# volcano_plot(sox2_motifs)
+# dev.off()
+# # ##----------------
 # ## filter motifs
 # ##----------------
 # ## FDR adjust pvalues

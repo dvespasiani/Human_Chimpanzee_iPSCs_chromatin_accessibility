@@ -7,9 +7,6 @@ library(ggthemes)
 library(ggplot2)
 library(ggpubr)
 library(VennDiagram)
-# library(ChIPseeker)
-# library(TxDb.Hsapiens.UCSC.hg38.knownGene)
-
 
 options(width=150,scipen=99)
 setwd('/data/projects/punim0595/dvespasiani/Human_Chimpanzee_iPSCs_chromatin_accessibility/post_processing_analyses')
@@ -26,9 +23,9 @@ tmp_files_dir <- './output/temp_files/'
 de_palette <- c('#DDA15E','#606C38')
 names(de_palette) = c('de','non_de')
 
-## get DA peaks
-da_results <- read_da_results('new_da_results.txt')
-da_results <- da_results[,c(..range_keys,'DA','peakID','FDR','peak_species','logFC')]
+# ## get DA peaks
+# da_results <- read_da_results('new_da_results.txt')
+# da_results <- da_results[,c(..range_keys,'DA','peakID','FDR','da_species','logFC')]
 
 # ## use chipseeker to annotate peaks within 1Mb of distance to their putative target gene(s)
 # txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
@@ -228,10 +225,9 @@ da_results <- da_results[,c(..range_keys,'DA','peakID','FDR','peak_species','log
 # theme(legend.position='bottom')
 # dev.off()
 
-
 ## get target genes
-target_genes <- fread(paste(target_genes_dir,'/target_genes.txt',sep=''),sep='\t',header=T)[,c('SYMBOL','geneId'):=NULL]%>%na.omit()
-target_genes <- target_genes[da_results,on=c(range_keys,'peakID','DA'),nomatch=0]
+peaks_w_genes <- fread(paste(target_genes_dir,'/target_genes.txt',sep=''),sep='\t',header=T)%>%na.omit()
+# target_genes <- target_genes[da_results,on=c(range_keys,'peakID','DA'),nomatch=0]
 
 # ## get DE genes 
 # ## NB: because the DE was tested chimp vs human whereas DA was human vs chimp simply revert the sign of the DE logFC 
@@ -239,14 +235,14 @@ gene_exp_data <- fread(
   "../rna_seq/de_output/irenes_files/topSpecies.loess.norm.norandom_ipsc_final_no_ribo.out",
   sep=' ',header=F,col.names=c('genes','EnsemblID','logFC','AveExpr','t','P.Value','adj.P.Val','B')
   )[
-    ,de_logFC:=logFC
+    ,de_logFC:=-logFC
     ][
         ,DE:=ifelse(adj.P.Val <= 0.01,'de','non_de')
         ][
           ,c('P.Value','t','B','genes','logFC'):=NULL
 ]
 
-da_peaks_orth_genes <- copy(target_genes)[gene_exp_data,on='EnsemblID',nomatch=0]
+peaks_w_genes_expr <- copy(peaks_w_genes)[gene_exp_data,on='EnsemblID',nomatch=0]
 
 ## get proportion peaks and genes retained
 get_prop <- function(initial,filtered,metric){
@@ -257,30 +253,35 @@ get_prop <- function(initial,filtered,metric){
   names(return) = c('initial_number','filtered_number','proportion')
   return(return)
 }
-get_prop(target_genes,da_peaks_orth_genes,'EnsemblID')
+get_prop(peaks_w_genes,peaks_w_genes_expr,'EnsemblID')
 # $initial_number
-# [1] 18334
+# [1] 21084
 
 # $filtered_number
-# [1] 10088
+# [1] 11091
 
 # $proportion
-# [1] 55.02345
-
-get_prop(target_genes,da_peaks_orth_genes,'peakID')
+# [1] 52.60387
+get_prop(peaks_w_genes,peaks_w_genes_expr,'peakID')
 # $initial_number
-# [1] 69443
+# [1] 142875
 
 # $filtered_number
-# [1] 38336
+# [1] 79015
 
 # $proportion
-# [1] 55.20499
+# [1] 55.30359
+
+## for each regulation type keep the closest peak to each gene
+closest_peaks_w_genes_expr <- copy(peaks_w_genes_expr)%>%split(by='regulation')%>%lapply(
+  function(x) x<-x[ ,.SD[which.min(abs(distTSS))], by=.(EnsemblID)]
+)%>%rbindlist()
+
 
 ## look at enrichment DA peaks near DE genes
 ## enrichment de genes with da peaks
-significant_da_genes <- copy(da_peaks_orth_genes)[DA=='da']$EnsemblID%>%unique()
-significant_de_genes <- copy(da_peaks_orth_genes)[DE=='de']$EnsemblID%>%unique()
+significant_da_genes <- copy(closest_peaks_w_genes_expr)[DA=='da']$EnsemblID%>%unique()
+significant_de_genes <- copy(closest_peaks_w_genes_expr)[DE=='de']$EnsemblID%>%unique()
 
 da_de_overlap <-  list(significant_da_genes,significant_de_genes)
 
@@ -294,7 +295,7 @@ venn.diagram(
     width = 700 , 
     resolution = 400,
     lwd = 1,
-   col=c(da_palette[1],de_palette[1]),
+    col=c(da_palette[1],de_palette[1]),
     fill = c(alpha(da_palette[1],0.3),alpha(de_palette[1],0.3)),
     cex = 0.5,
     fontfamily = "sans",
@@ -308,10 +309,10 @@ venn.diagram(
 
 ## test significance overlap
 da_de_genes <- Reduce(intersect,da_de_overlap)%>%unique()
-nonda_de_genes <- copy(da_peaks_orth_genes)[DA!='da'][DE=='de'][,EnsemblID]%>%unique()
+nonda_de_genes <- copy(closest_peaks_w_genes_expr)[DA!='da'][DE=='de'][,EnsemblID]%>%unique()
 
-da_nonde_genes <- copy(da_peaks_orth_genes)[DA=='da'][DE!='de'][,EnsemblID]%>%unique()
-nonda_nonde_genes <- copy(da_peaks_orth_genes)[DA!='da'][DE!='de'][,EnsemblID]%>%unique()
+da_nonde_genes <- copy(closest_peaks_w_genes_expr)[DA=='da'][DE!='de'][,EnsemblID]%>%unique()
+nonda_nonde_genes <- copy(closest_peaks_w_genes_expr)[DA!='da'][DE!='de'][,EnsemblID]%>%unique()
 
 matrix <- data.frame(
   as.numeric(length(da_de_genes)),
@@ -323,35 +324,35 @@ matrix <- data.frame(
 enrichment_dade_overlap <-fisher.test(matrix) 
 
 ## plot cumulative distribution number DA peaks over 10kb region
-
-test = copy(da_peaks_orth_genes)[,binned_dist:=plyr::round_any(abs(distTSS), 10)][abs(distTSS)<=10000]
+cumdist_peaks_genes = copy(closest_peaks_w_genes_expr)[,binned_dist:=plyr::round_any(abs(distTSS), 10)][abs(distTSS)<=100000]
 
 pdf(paste(outplot_dir,'cumulative_distribution_peaks_gene_distances.pdf',sep=''),width = 7,height = 7)
-ggplot(test, aes(binned_dist,col=DA)) + stat_ecdf()
+ggplot(cumdist_peaks_genes, aes(binned_dist,col=DA)) + stat_ecdf()+
+geom_vline(xintercept=10000,linetype='dashed')+
+scale_color_manual(values=da_palette)+
+theme_classic()
 dev.off()
 
 
-
 ## add chrom state info to peaks 
-chrom_state_dir <- '../data/iPSC_chrom_states_hg38'
+# chrom_state_dir <- '../data/iPSC_chrom_states_hg38'
 
-ipsc_chromstate <- read_chromstate(chrom_state_dir) ## these contain info for sex chr and are in hg38 coord
-setkeyv(ipsc_chromstate,range_keys)
+# ipsc_chromstate <- read_chromstate(chrom_state_dir) ## these contain info for sex chr and are in hg38 coord
+# setkeyv(ipsc_chromstate,range_keys)
 
-da_peaks_orth_genes <- foverlaps(da_peaks_orth_genes,ipsc_chromstate,type='any')
+# closest_peaks_w_genes_expr <- foverlaps(closest_peaks_w_genes_expr,ipsc_chromstate,type='any')
 
-da_peaks_orth_genes <- da_peaks_orth_genes[
-    ,overlap:=ifelse(i.start<start,i.end-start,end-i.start)
-    ][
-        ,.SD[which.max(overlap)], by=.(peakID)
-        ][
-            ,c(range_keys[-1],'overlap'):=NULL
-]%>%setnames(old=c('i.start','i.end'),new=c(range_keys[-1]))
-
+# closest_peaks_w_genes_expr <- closest_peaks_w_genes_expr[
+#     ,overlap:=ifelse(i.start<start,i.end-start,end-i.start)
+#     ][
+#         ,.SD[which.max(overlap)], by=.(peakID)
+#         ][
+#             ,c(range_keys[-1],'overlap'):=NULL
+# ]%>%setnames(old=c('i.start','i.end'),new=c(range_keys[-1]))
 
 
 ## correlation atac/rna-seq logFC
-logfc_da_de_genes <- copy(da_peaks_orth_genes)[,da_logFC:=logFC]
+logfc_da_de_genes <- copy(closest_peaks_w_genes_expr)[,da_logFC:=logFC]
 
 corr_dade=copy(logfc_da_de_genes)[DA=='da'][DE=='de']
 cor.test(corr_dade$de_logFC,corr_dade$da_logFC)

@@ -1,7 +1,7 @@
 ##--------------------------------------------------------------------------------------------------
 ## script to create random set of genomic regions using regioneR R package
 ## to run this script do:
-## Rscript ./make_random_genomic_regions.R new_da_results.txt random_genomic_regions.txt 3
+## Rscript ./make_random_genomic_regions.R new_da_results.txt random_genomic_regions.txt 1
 ##--------------------------------------------------------------------------------------------------
 
 library(dplyr)

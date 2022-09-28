@@ -4,13 +4,16 @@ cd /data/projects/punim0595/dvespasiani/Human_Chimpanzee_iPSCs_chromatin_accessi
 ## activate conda env
 # conda activate atac
 sinteractive \
- --account=punim0586  \
+ --account=punim0586 \
  --ntasks=1 \
+ --threads=2 \
  --cpus-per-task=2 \
- --mem=700000 \
+ --mem=80000 \
  --time=10:00:00 \
  --partition=mig
  
+#  --threads-per-core=16 \
+#  --cpus-per-task=1 \
 # list of modules
 source /usr/local/module/spartan_new.sh
 module load web_proxy

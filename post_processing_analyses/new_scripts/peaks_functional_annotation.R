@@ -19,10 +19,11 @@ source(paste(scripts_dir,'utils.R',sep=''))
 
 chrom_state_dir <- '../data/iPSC_chrom_states_hg38'
 outplot_dir <- create_dir(plot_dir,'chromstate_annotation')
+out_tabledir <- create_dir(table_dir,'funcAnnot')
 
 ## get DA peaks
 da_results <- read_da_results('new_da_results.txt')
-da_results <- da_results[,c(..range_keys,'DA','peakID','FDR','da_species','logFC')]
+da_results <- da_results[,c(..range_keys,'DA','peakID','FDR','da_species','logFC','peaktype')]
 
 ## blacklisted regions
 blacklist <- fread('../data/ENCODE_blacklisted/hg38_blacklist_v2.bed',sep='\t',header=F,col.names=range_keys)%>%makeGRangesFromDataFrame()
@@ -31,15 +32,20 @@ blacklist <- fread('../data/ENCODE_blacklisted/hg38_blacklist_v2.bed',sep='\t',h
 ipsc_chromstate <- read_chromstate(chrom_state_dir) ## these contain info for sex chr and are in hg38 coord
 setkeyv(ipsc_chromstate,range_keys)
 
-## generate random genomic region
-numb_random_sets = 3
-random_peaks <- list()
+# ## generate random genomic region
+# numb_random_sets = 2
+# random_peaks <- list()
 
-for (i in 1:numb_random_sets){
-  random_peaks[[i]] <- randomizeRegions(makeGRangesFromDataFrame(da_results),mask=blacklist,genome='hg38',allow.overlaps=F)%>%as.data.table()
-}
-random_peaks <- rbindlist(random_peaks)
-random_peaks <- random_peaks[,peakID:=paste('peak_',1:nrow(random_peaks),sep='')][seqnames%in% standard_chr]
+# for (i in 1:numb_random_sets){
+#   random_peaks[[i]] <- randomizeRegions(makeGRangesFromDataFrame(da_results),mask=blacklist,genome='hg38',allow.overlaps=F)%>%as.data.table()
+# }
+# random_peaks <- rbindlist(random_peaks)
+# random_peaks <- random_peaks[,peakID:=paste('peak_',1:nrow(random_peaks),sep='')][seqnames%in% standard_chr]
+
+## read random genomic regions
+
+random_peaks <- fread('./output/random_regions/random_genomic_regions.txt',sep='\t',header=T)
+random_peaks <- random_peaks[,peakID:=paste('peak_',1:nrow(random_peaks),sep='')]
 
 ## overlap ranges
 annotate_peaks <- function(peaks){
@@ -70,7 +76,6 @@ randompeaks_annotation <- annotate_peaks(random_peaks)
 # # peak_annotation <- foverlaps(da_results,ipsc_chromstate,type='any')[,c('start','end'):=NULL]%>%na.omit()%>%setnames(old=c('i.start','i.end'),new=c(range_keys[-1]))
 
 # peakid_chromstate <- copy(peak_annotation)[,c('peakID','DA','chrom_state')]%>%unique()
-
 
 ## OR per cell type my peaks vs random set of regions
 count_peaks_chromstate <- function(peaks){
@@ -115,6 +120,10 @@ pdf(paste(outplot_dir,'mypeaks_vs_randomregion_enrichment_chromstates.pdf',sep='
 plot_or(genwide_peaks_or)
 dev.off()
 
+## export or results
+df <- copy(genwide_peaks_or)%>%setnames(old='elements',new='chrom_state')
+fwrite(df,paste(out_tabledir,'mypeaks_randomregion_or_chromstate.txt',sep=''),sep='\t',quote=F,row.names=F,col.names=T)
+
 ## or da vs non da 
 da_peaks_count <- count_peaks_chromstate(mypeaks_annotation[DA=='da'])%>%split(by='cell_type')
 nonda_peaks_count <- count_peaks_chromstate(mypeaks_annotation[DA!='da'])%>%split(by='cell_type')
@@ -130,6 +139,11 @@ pdf(paste(outplot_dir,'da_vs_nonda_enrichment_chromstates.pdf',sep=''),width=7,h
 plot_or(danonda_peaks_or)
 dev.off()
 
+## export or results
+df2 <- copy(danonda_peaks_or)%>%setnames(old='elements',new='chrom_state')
+fwrite(df2,paste(out_tabledir,'da_nonda_peaks_or_chromstate.txt',sep=''),sep='\t',quote=F,row.names=F,col.names=T)
+
+
 ## get independent sets of promoters and calculate
 ## 1) CpG and GC content
 ## 2) PhastCons score
@@ -141,12 +155,12 @@ promoter_states <- 'Tss|Flnk'
 
 txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
 
-all_promoters <- transcripts(txdb)%>%as.data.table()
-all_promoters <- all_promoters[!seqnames%like% "M|Un|_"][,end:=start][,start:=start-500][,width:=end-start][,c(1:3)][,type:='upstream_txdb']
+all_promoters <- genes(txdb,single.strand.genes.only=FALSE)%>%as.data.table()
+all_promoters <- all_promoters[!seqnames%like% "M|Un|_"][,end:=start][,start:=start-500][,width:=end-start][,c(..range_keys)][,type:='upstream_txdb']
 
 ipsc_promoters <- copy(ipsc_chromstate)[chrom_state %like% promoter_states][,c(1:3)][,type:='ipsc_promoters']%>%unique()
-random_promoters <- copy(randompeaks_annotation)[chrom_state %like% promoter_states][,c(..range_keys)][,type:='random']
-mypromoters <- copy(mypeaks_annotation)[chrom_state %like% promoter_states][,c(..range_keys,'DA')][,type:=DA][,DA:=NULL]
+random_promoters <- copy(randompeaks_annotation)[chrom_state %like% promoter_states][,c(..range_keys)][,type:='random']%>%unique()
+mypromoters <- copy(mypeaks_annotation)[chrom_state %like% promoter_states][,c(..range_keys,'DA')][,type:=DA][,DA:=NULL]%>%unique()
 
 promoters <- rbind(mypromoters,ipsc_promoters,random_promoters,all_promoters)%>%unique()
 
@@ -175,8 +189,7 @@ comparisons = list(
 )
 ## plot function
 plot_promoters <- function(x,column_to_plot,ylab){
-  promoters_palette = c('#94D2BD','#F4A261','lightgray',da_palette)
-  names(promoters_palette) = c('ipsc_promoters','upstream_txdb','random',names(da_palette))
+
   df <- copy(x)[,column:=column_to_plot]
   
   type_order <- c('ipsc_promoters', 'upstream_txdb','random', 'da','non_da')
@@ -243,19 +256,6 @@ promoters_scores <- rbindlist(promoters_scores)[,peakID:=NULL]
 pdf(paste0(outplot_dir,'peaks_phastcons_score.pdf',sep=''),width = 7, height = 7)
 plot_promoters(promoters_scores,promoters_scores$avg_phastcons,'avg phastCons score')
 dev.off()
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 ##--------------------------------------------------------
 ## Empirical permutation to assess genome-wide enrichment 

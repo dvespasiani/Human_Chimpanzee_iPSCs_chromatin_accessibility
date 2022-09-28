@@ -15,7 +15,6 @@ library(ComplexHeatmap)
 library(viridis)
 library(GenomicRanges)
 
-
 options(width=150)
 setwd('/data/projects/punim0595/dvespasiani/Human_Chimpanzee_iPSCs_chromatin_accessibility')
 
@@ -24,6 +23,8 @@ source(paste(scripts_dir,'utils.R',sep=''))
 
 peakDir = "output/PeakCalling/Files/"
 outplot_dir <- create_dir(paste('./post_processing_analyses/',plot_dir,sep=''),'consensus_orthologous_peaks')
+
+outtable_dir <- create_dir('post_processing_analyses/output/tables/','consensusPeaks')
 
 human_chimp_col <- c('#14213d','#fca311')
 names(human_chimp_col) = c('chimp','human')
@@ -41,6 +42,9 @@ read_consensus_peaks <- function(genome,peakfile){
 }
 human_consensus_peaks <- read_consensus_peaks('./hg38/','human_hg38_macs2_default_peaks.narrowPeak')
 chimp_consensus_peaks <- read_consensus_peaks('./panTro5/','chimp_pantro5_macs2_default_peaks.narrowPeak')
+
+fwrite(human_consensus_peaks,paste(outtable_dir,'human_consensus_peaks.bed.gz',sep=''),sep='\t',col.names=T,quote=F,row.names=F)
+fwrite(chimp_consensus_peaks,paste(outtable_dir,'chimp_consensus_peaks.bed.gz',sep=''),sep='\t',col.names=T,quote=F,row.names=F)
 
 ## individual peaks
 read_individual_peaks = function(species,patterns){
@@ -60,13 +64,13 @@ read_individual_peaks = function(species,patterns){
 chimp_individual_peaks = read_individual_peaks('./panTro5/',"^C.*macs2_default_peaks.narrowPeak$")
 human_individual_peaks = read_individual_peaks('./hg38/',"^H.*macs2_default_peaks.narrowPeak$")
 
-# peak_intersection <- function(peaks,consensus){
-#     peak_intersection=lapply(peaks,function(x)x=foverlaps(x,consensus,type='any')%>%na.omit())
-#     peakIDs=copy(peak_intersection)%>%lapply(function(x)x$peakID)
-#     output=list(peakIDs,peak_intersection)
-#     names(output)=c('IDs','intersection')
-#     return(output)
-# }
+peak_intersection <- function(peaks,consensus){
+    peak_intersection=lapply(peaks,function(x)x=foverlaps(x,consensus,type='any')%>%na.omit())
+    peakIDs=copy(peak_intersection)%>%lapply(function(x)x$peakID)
+    output=list(peakIDs,peak_intersection)
+    names(output)=c('IDs','intersection')
+    return(output)
+}
 
 # human_support_peaks <- peak_intersection(human_individual_peaks,human_consensus_peaks)
 # chimp_support_peaks <- peak_intersection(chimp_individual_peaks,chimp_consensus_peaks)
@@ -80,20 +84,22 @@ human_individual_peaks = read_individual_peaks('./hg38/',"^H.*macs2_default_peak
 # upset(fromList(chimp_support_peaks$IDs),nsets = 6,order.by = "freq")
 # dev.off()
 
-##------------------------------------
-## Filter peaks with low mappability  
-##------------------------------------
-read_map = function(genome){
-    file=dir(paste(genome,'/genome_mappability/mappability',sep=''),pattern='*genmap.bedgraph',full.names=T)
-    map = fread(file,sep='\t',header=T)
-    # [
-    #     ,seqnames:=ifelse(seqnames%like% 'chr',seqnames,paste('chr',seqnames,sep=''))
-    #     ]
-    return(map)
-}
+# ##------------------------------------
+# ## Filter peaks with low mappability  
+# ##------------------------------------
+# read_map = function(genome){
+#     file=dir(paste(genome,'/genome_mappability/mappability',sep=''),pattern='*genmap.bedgraph',full.names=T)
+#     map = fread(file,sep='\t',header=F)%>%setnames(c(range_keys,'mappability_score'))
+#     map <- map[seqnames %in% standard_chr]
+
+#     return(map)
+# }
  
-# hg38_map = read_map('./hg38')
-pantro5_mappability = read_map('./panTro5')
+# # hg38_map = read_map('./hg38')
+# pantro5_mappability = read_map('./panTro5')
+
+
+
 
 # ## read peaks
 # read_peaks = function(genome,file){
@@ -107,26 +113,23 @@ pantro5_mappability = read_map('./panTro5')
 # human_and_common_peaks = read_peaks('./hg38/','common_and_human_specific_peaks_hg38.bed')
 # chimp_and_common_peaks = read_peaks('./pantro5/','common_and_chimp_specific_peaks_pantro5.bed')
 
-## get map score for peak regions 
-human_peakmap = foverlaps(hg38_map,human_and_common_peaks,type='any')%>%na.omit()
-chimp_peakmap = foverlaps(pantro5_map,chimp_and_common_peaks,type='any')%>%na.omit()
+# ## get map score for peak regions 
+# human_peakmap = foverlaps(hg38_map,human_and_common_peaks,type='any')%>%na.omit()
+# chimp_peakmap = foverlaps(pantro5_map,chimp_and_common_peaks,type='any')%>%na.omit()
 
-## calculate and plot the mean mappability score for each peak
-human_meanmap = copy(human_peakmap)[ , .(mean_map = mean(map_score)), by = peakID][,file:='human'][, c("peakID", "species") := tstrsplit(peakID, ".", fixed=TRUE)]
-chimp_meanmap = copy(chimp_peakmap)[ , .(mean_map = mean(map_score)), by = peakID][,file:='chimp'][, c("peakID", "species") := tstrsplit(peakID, ".", fixed=TRUE)]
+# ## calculate and plot the mean mappability score for each peak
+# human_meanmap = copy(human_peakmap)[ , .(mean_map = mean(map_score)), by = peakID][,file:='human'][, c("peakID", "species") := tstrsplit(peakID, ".", fixed=TRUE)]
+# chimp_meanmap = copy(chimp_peakmap)[ , .(mean_map = mean(map_score)), by = peakID][,file:='chimp'][, c("peakID", "species") := tstrsplit(peakID, ".", fixed=TRUE)]
 
-pdf(paste0(plot_dir,'peak_mean_mappability_score.pdf',sep=''),width = 10, height = 5)
-ggplot(rbind(human_meanmap,chimp_meanmap), aes(x =factor(round(mean_map,1)),fill = species))+
-    geom_bar(position='dodge')+xlab(' ')+ylab('peak mean mappability score')+
-    facet_wrap(file~.,ncol=2)+
-    theme(
-    axis.line = element_blank(),
-    axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)
-    )
-dev.off()
-
-
-
+# pdf(paste0(plot_dir,'peak_mean_mappability_score.pdf',sep=''),width = 10, height = 5)
+# ggplot(rbind(human_meanmap,chimp_meanmap), aes(x =factor(round(mean_map,1)),fill = species))+
+#     geom_bar(position='dodge')+xlab(' ')+ylab('peak mean mappability score')+
+#     facet_wrap(file~.,ncol=2)+
+#     theme(
+#     axis.line = element_blank(),
+#     axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)
+#     )
+# dev.off()
 
 
 ## Use liftover to get orthologous regions

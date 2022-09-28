@@ -1,32 +1,31 @@
 
-conda activate atac
-source /usr/local/module/spartan_new.sh
-module load web_proxy
-module load gcc/8.3.0 openmpi/3.1.4
-module load python/3.7.4
+# conda activate atac
+# source /usr/local/module/spartan_new.sh
+# module load web_proxy
+# module load gcc/8.3.0 openmpi/3.1.4
+# module load python/3.7.4
 
-helpFunction(){
-   echo ""
-   echo "Usage: $0 -g genome"
-   echo -e "\t-g genome to index"
-   exit 1 # Exit script after printing help
-}
+# helpFunction(){
+#    echo ""
+#    echo "Usage: $0 -g genome"
+#    echo -e "\t-g genome to index"
+#    exit 1 # Exit script after printing help
+# }
 
-while getopts "g:" flag; do
-    case "${flag}" in
-        g) genome="$OPTARG";;
-        ?) helpFunction ;; # Print helpFunction
-    esac
-done
+# while getopts "g:" flag; do
+#     case "${flag}" in
+#         g) genome="$OPTARG";;
+#         ?) helpFunction ;; # Print helpFunction
+#     esac
+# done
 
-## directories
+## tmp directories
 mkdir /data/gpfs/projects/punim0595/dvespasiani/tmp
 export TMPDIR=/data/gpfs/projects/punim0595/dvespasiani/tmp
 
 wd='/data/projects/punim0595/dvespasiani/Human_Chimpanzee_iPSCs_chromatin_accessibility'
 g='hg38'
 genome_dir="$wd/$g/data/genome"
-# punim0586_dir="/data/projects/punim0586/dvespasiani/genome_mappability/$g"
 index_dir="$wd/$g/genome_mappability/indexed_genome"
 mappability_dir="$wd/$g/genome_mappability/mappability"
 
@@ -36,10 +35,10 @@ if [ ! -d "$mappability_dir" ]; then
 fi
 
 ## index genome
-# genmap index -FD $genome_dir -I  $index_dir
+genmap index -FD $genome_dir -I  $index_dir
 
 ## calculate k-mer mappability
-genmap map -K 150 -E 4 -I $index_dir -O $mappability_dir -bg --exclude-pseudo -T 10 -nc -v -m
+genmap map -K 50 -E 2 -I $index_dir -O $mappability_dir -bg --exclude-pseudo -T 20 -v -m
 
 
 

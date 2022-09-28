@@ -47,17 +47,13 @@ if [ ! -d "$deepbind_dir" ]; then
    mkdir -p "$deepbind_dir";
 fi
 
-awk '{print $3}' ${ctcf_peaks}/all_peaks_seq_discovered_ctcf.txt | tail -n +2 > ${deepbind_dir}/mypeaks_ctcf_sequences.txt 
-awk '{print $1}' ${ctcf_peaks}/all_peaks_seq_discovered_ctcf.txt > ${deepbind_dir}/mypeaks_ctcf_peakIDs.txt
-
-awk '{print $5}' ${ctcf_peaks}/hg38_all_ctcf_final.bed | tail -n +2 > ${deepbind_dir}/genwide_ctcf_sequences.txt 
-awk '{print $4}' ${ctcf_peaks}/hg38_all_ctcf_final.bed >  ${deepbind_dir}/genwide_ctcf_peakIDs.txt
-
+awk '{print $3}' ${ctcf_peaks}/ctcf_discovered.txt | tail -n +2 > ${deepbind_dir}/ctcf_sequences.txt 
+awk '{print $1}' ${ctcf_peaks}/ctcf_discovered.txt > ${deepbind_dir}/ctcf_peakIDs.txt
 
 for f in "$deepbind_dir"/* ; do
   file_basename=$(echo $(basename $f)| cut -f 1 -d '_')
   deepbind_output="$output_dir/${file_basename}"
-  ./deepbind/deepbind  --echo  ./deepbind/example.ids < "${deepbind_dir}/${file_basename}_ctcf_sequences.txt" > "${deepbind_output}_tmp.txt"
-  paste -d '\t' "${deepbind_dir}/${file_basename}_ctcf_peakIDs.txt" "${deepbind_output}_tmp.txt" > "${deepbind_output}_ctcf_affinity_predictions.txt"
+  ./deepbind/deepbind  --echo  ./deepbind/example.ids < "${deepbind_dir}/ctcf_sequences.txt" > "${deepbind_output}_tmp.txt"
+  paste -d '\t' "${deepbind_dir}/ctcf_peakIDs.txt" "${deepbind_output}_tmp.txt" > "${deepbind_output}_affinity_predictions.txt"
   rm "${deepbind_output}_tmp.txt" 
 done
