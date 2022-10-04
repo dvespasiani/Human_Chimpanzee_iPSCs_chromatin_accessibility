@@ -38,7 +38,7 @@ fi
 genmap index -FD $genome_dir -I  $index_dir
 
 ## calculate k-mer mappability
-genmap map -K 50 -E 2 -I $index_dir -O $mappability_dir -bg --exclude-pseudo -T 20 -v -m
+genmap map -K 50 -E 2 -I $index_dir -O $mappability_dir -bg --exclude-pseudo -T 6 -v
 
 
 

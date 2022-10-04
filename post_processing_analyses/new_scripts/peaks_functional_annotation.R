@@ -43,7 +43,6 @@ setkeyv(ipsc_chromstate,range_keys)
 # random_peaks <- random_peaks[,peakID:=paste('peak_',1:nrow(random_peaks),sep='')][seqnames%in% standard_chr]
 
 ## read random genomic regions
-
 random_peaks <- fread('./output/random_regions/random_genomic_regions.txt',sep='\t',header=T)
 random_peaks <- random_peaks[,peakID:=paste('peak_',1:nrow(random_peaks),sep='')]
 

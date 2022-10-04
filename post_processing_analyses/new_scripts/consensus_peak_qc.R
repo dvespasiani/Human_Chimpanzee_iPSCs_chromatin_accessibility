@@ -148,7 +148,7 @@ filter_orth_peaks =function(consensus,lifted){
         ][
             ,width:=end-start
             ][
-                width>=150 & width<=2000
+                width>=150 & width<=1000
                 ]
     setkeyv(final_peak,range_keys)
     return(final_peak)
@@ -181,6 +181,11 @@ filter_peaks <- function(df,consensus,numb.samples){
 
 human_filtered_peaks <- filter_peaks(human_support_orthologous_peaks[[2]],human_consensus_peaks,2)
 chimp_filtered_peaks <- filter_peaks(chimp_support_orthologous_peaks[[2]],chimp_consensus_peaks,2)
+
+nrow(human_filtered_peaks)
+# [1] 83319
+nrow(chimp_filtered_peaks)
+# [1] 72401
 
 ## export new set of peaks
 outfile_dir <- './post_processing_analyses/output/files/orthologous_consensus_filtered_peaks/'
