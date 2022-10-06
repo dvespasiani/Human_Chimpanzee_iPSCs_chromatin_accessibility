@@ -5,9 +5,6 @@ library(magrittr)
 library(ggplot2)
 library(ggpubr)
 library(dplyr)
-library(liftOver)
-library(rtracklayer)
-library(UpSetR)
 library(ComplexHeatmap)
 library(viridis)
 library(edgeR)
@@ -19,15 +16,10 @@ library(preprocessCore)
 options(width=150)
 setwd('/data/projects/punim0595/dvespasiani/Human_Chimpanzee_iPSCs_chromatin_accessibility')
 
-scripts_dir <- './post_processing_analyses/scripts/'
-source(paste(scripts_dir,'utils.R',sep=''))
+source('./post_processing_analyses/scripts/utils.R')
 
-# peakDir = "output/PeakCalling/Files/"
-peak_inputdir <- './post_processing_analyses/output/files/orthologous_consensus_filtered_peaks/'
-outplot_dir <- create_dir(paste(plot_dir,sep=''),'DA')
-
-human_chimp_col <- c('#219ebc','#fb8500')
-names(human_chimp_col) = c('chimp','human')
+peak_inputdir = paste(basedir,'post_processing_analyses/output/files/consensusPeaks/',sep='')
+outplot_dir = create_dir(paste(plot_dir,sep=''),'DA')
 
 ##---------------------
 ## reusable functions
@@ -65,54 +57,64 @@ plot_densities <-function(dt){
     return(p)
 }
 
-##-------------------------------------
-## Read filtered orth consensus peaks 
-##-------------------------------------
-read_peaks <- function(peak_file){
-    peaks <- fread(paste(peak_inputdir,peak_file,sep=''),header=T)
-    setkeyv(peaks,range_keys)
-    return(peaks)
+## Read the mapped consensus peaks
+## for this and all downstream analyses use peaks in hg38 coords. 
+## so get the panTro5 peaks mapped to hg38 coordinates and then combine the 2 data tables 
+get_peaks = function(file){
+    f = fread(paste(peak_inputdir,file,sep=''),header=T)[seqnames %in% standard_chr]
+    setkeyv(f,range_keys)
+    f = f%>%setorderv(c(range_keys,'peakID'),1)
+    return(f)
 }
 
-human_peaks <- read_peaks('human_filtered_orth_consensus_peaks.txt')
-chimp_peaks <- read_peaks('chimp_filtered_orth_consensus_peaks.txt')
+human_cons_peaks = get_peaks('human_consensus_peaks.bed')# hg38 coords
+human_map_peaks_panTro5 = get_peaks('human_consensus_peaks_mapped.bed') # pantro5 coords
+human_map_peaks_hg38 = copy(human_cons_peaks)[peakID %in% human_map_peaks_panTro5$peakID]
 
-## convert peaks into the other genome coordinates and then attach the granges
-human_peaks_chimp_coord <- convert_coord(human_peaks,'hg38ToPanTro5.over.chain')
+chimp_cons_peaks = get_peaks('chimp_consensus_peaks.bed') # pantro5 coords
+chimp_map_peaks_hg38 = get_peaks('chimp_consensus_peaks_mapped.bed') # hg38 coords
+chimp_map_peaks_panTro5 = copy(chimp_cons_peaks)[peakID %in% chimp_map_peaks_hg38$peakID]
 
-common_peaks = foverlaps(human_peaks_chimp_coord,chimp_peaks,type='any')%>%na.omit()
-unique_common_peaks = copy(common_peaks)[,c('peakID','i.peakID')]%>%unique()
-unique_common_peaks = unique_common_peaks[,duphuman:=.N,by=.(i.peakID)][,dupchimp:=.N,by=.(peakID)][duphuman == 1 & dupchimp==1]%>%setnames(old=c('peakID','i.peakID'),new=c('chimp_peakID','human_peakID'))
+## get common peaks by looking at overlap betweeen genomic regions
+## and create 2 common peaks dt (1 x species) with the common genomic regions in the relative species genomic coordinates
+common_peaks_hg38 = foverlaps(chimp_map_peaks_hg38,human_map_peaks_hg38,type='any')%>%na.omit()
+common_peaks_hg38 = common_peaks_hg38[,peaktype:='common']%>%unique()%>%
+setnames(old=c('peakID','i.peakID'),new=c('human_peakID','chimp_peakID'))
 
-human_peaks = human_peaks[,peaktype:= ifelse(peakID %in% unique_common_peaks$human_peakID,'common','human_sp')]
-chimp_peaks = chimp_peaks[,peaktype:= ifelse(peakID %in% unique_common_peaks$chimp_peakID,'common','chimp_sp')]
+unique_common_peaks = copy(common_peaks_hg38)[,c('human_peakID','chimp_peakID')]%>%unique()
+unique_common_peaks = unique_common_peaks[,duphuman:=.N,by=.(chimp_peakID)][,dupchimp:=.N,by=.(human_peakID)][duphuman == 1 & dupchimp==1]
 
-## convert species specific peaks to the other coordinates
-## then add these peaks to the other species 
-human_sp_peaks_pantro5 = convert_coord(human_peaks[peaktype=='human_sp'],'hg38ToPanTro5.over.chain')
-chimp_sp_peaks_hg38 = convert_coord(chimp_peaks[peaktype=='chimp_sp'],'panTro5ToHg38.over.chain')
+common_peaks_hg38 = copy(human_map_peaks_hg38)[peakID %in% unique_common_peaks$human_peakID][,peaktype:='common']
+common_peaks_panTro5 = copy(chimp_map_peaks_panTro5)[peakID %in% unique_common_peaks$chimp_peakID][,peaktype:='common']
 
+## now get species-specific peaks in their relative species coordinates
+human_sp_hg38 = copy(human_map_peaks_hg38)[! peakID %in% common_peaks_hg38$peakID][,peaktype:='human_sp']
+chimp_sp_panTro5 = copy(chimp_map_peaks_panTro5)[! peakID %in% common_peaks_panTro5$peakID][,peaktype:='chimp_sp']
+
+## repeat this step but with the mixed species-genomic coordinates files
+human_sp_panTro5 = copy(human_map_peaks_panTro5)[ peakID %in% human_sp_hg38$peakID][,peaktype:='human_sp']
+chimp_sp_hg38 = copy(chimp_map_peaks_hg38)[ peakID %in% chimp_peaks_panTro5$peakID][,peaktype:='chimp_sp']
+
+## now make 2 final datatables with all common and sp peaks in the 2 genomic coordinates (you need this for DA)
 make_final_peaks <- function(peaks){
-    final_peaks <- copy(peaks)
-    final_peaks <- final_peaks[,peakID:=paste('peak_',1:nrow(final_peaks),sep='')]%>%makeGRangesFromDataFrame(keep.extra.columns=T)
-    return(final_peaks)
+    return <- copy(peaks)
+    return <- return[,peakID:=paste('peak_',1:nrow(return),sep='')]%>%makeGRangesFromDataFrame(keep.extra.columns=T)
+    return(return)
 }
 
-final_human_peaks = make_final_peaks(rbind(human_peaks,chimp_sp_peaks_hg38))
-final_chimp_peaks = make_final_peaks(rbind(chimp_peaks,human_sp_peaks_pantro5))
+final_hg38_peaks = make_final_peaks(rbind(common_peaks_hg38,human_sp_hg38,chimp_sp_hg38))
+final_panTro5_peaks = make_final_peaks(rbind(common_peaks_panTro5,chimp_sp_panTro5,human_sp_panTro5))
 
-pdf(paste(outplot_dir,"distribution_peak_sizes_preDA.pdf",sep=''),width=7,height=5)
-options(scipen=999)
-df <- as.data.table(copy(final_human_peaks))
-ggplot(df,aes(x=width,fill=peaktype))+
-geom_density(alpha=0.5)+
-scale_fill_manual(values=c('#83c5be','#e29578','#006d77'))+
-xlab('Peak size')+ ylab('Density')+
-theme_classic()+
-theme()
-dev.off()
-
-## test for signif differences in peak sizes
+# pdf(paste(outplot_dir,"qc-dist-peaksizes-pre-da.pdf",sep=''),width=7,height=5)
+# options(scipen=999)
+# df <- as.data.table(copy(final_peaks))
+# ggplot(df,aes(x=width,fill=peaktype))+
+# geom_density(alpha=0.5)+
+# scale_fill_manual(values=c('#83c5be','#e29578','#006d77'))+
+# xlab('Peak size')+ ylab('Density')+
+# theme_classic()+
+# theme()
+# dev.off()
 
 ##---------------------------------------
 ## Differential Accessibility
@@ -130,29 +132,27 @@ pantro5_bams = get_bamReads('./panTro5/',"^C.*_tn5_shifted_sorted.bam$")
 
 ## count number reads overlapping orthologous consensus peaks 
 ## and convert to RPKM
-raw_counts_human <- regionCounts(hg38_bams, final_human_peaks,param=param)%>%asDGEList()
-# rownames(raw_counts_human) = orth_peaks_overlap$peakID_info
+raw_counts_human <- regionCounts(hg38_bams, final_hg38_peaks,param=param)%>%asDGEList()
 colnames(raw_counts_human) = samples_names[7:12]
 
-human_peaks_width <- copy(final_human_peaks@ranges@width)
+human_peaks_width <- copy(final_hg38_peaks@ranges@width)
 
 rpkm_counts_human <- copy(raw_counts_human)
 rpkm_counts_human$counts <- rpkm(raw_counts_human$counts,gene.length=human_peaks_width)
 
-raw_counts_chimp <- regionCounts(pantro5_bams, final_chimp_peaks,param=param)%>%asDGEList()
-# rownames(raw_counts_chimp) = orth_peaks_overlap$peakID_info
+raw_counts_chimp <- regionCounts(pantro5_bams, final_panTro5_peaks,param=param)%>%asDGEList()
 colnames(raw_counts_chimp) = samples_names[1:6]
 
-chimp_peaks_width <-copy(final_chimp_peaks@ranges@width)
+chimp_peaks_width <-copy(final_panTro5_peaks@ranges@width)
 rpkm_counts_chimp <- copy(raw_counts_chimp)
 rpkm_counts_chimp$counts <- rpkm(raw_counts_chimp$counts,gene.length=chimp_peaks_width)
+
 
 ## merge matrices 
 merged_raw_counts = cbind(raw_counts_chimp,raw_counts_human)
 merged_raw_counts$samples <- mutate(merged_raw_counts$samples,'group'=ifelse(rownames(merged_raw_counts$samples) %like% 'C','chimp','human'))
 
-mat_rownames = final_human_peaks@elementMetadata@listData$peakID
-# paste(paste('c:',final_chimp_peaks@elementMetadata@listData$peakID,sep=''),paste('h:',final_human_peaks@elementMetadata@listData$peakID,sep=''),sep='.')
+mat_rownames = final_hg38_peaks@elementMetadata@listData$peakID
 rownames(merged_raw_counts) = mat_rownames
 
 merged_rpkm_counts = cbind(rpkm_counts_chimp,rpkm_counts_human)
@@ -164,11 +164,8 @@ rownames(merged_rpkm_counts) =mat_rownames
 ##---------------------
 prior_counts = 0.5
 
-# cpm_counts <- copy(merged_raw_counts)
-# cpm_counts$counts <- cpm(cpm_counts$counts,log=T,prior.counts = prior_counts)
-
 ## plot log2 CPM before and after filtering
-pdf(paste(outplot_dir,"density_reads_in_peaks.pdf",sep=''),width=7,height=7)
+pdf(paste(outplot_dir,"qc-density-reads-in-peaks.pdf",sep=''),width=7,height=7)
 plot_densities(make_dt(cpm(merged_raw_counts$counts,log=T,prior.counts = prior_counts)))
 dev.off()
 
@@ -183,19 +180,12 @@ dt_list = rbindlist(dt_list)
 dt_list[is.na(dt_list)]=0
 
 keep <- filterByExpr(merged_raw_counts)
-# keep <- rowMeans(cpm_counts$counts) > 2
-# keep <- keep[apply(merged_raw_counts$counts,1, function(x) all(x!=0))),]
 raw_counts_filtered <- copy(merged_raw_counts)[keep,, keep.lib.sizes=FALSE]
 rpkm_counts_filtered <- copy(merged_rpkm_counts)[keep,, keep.lib.sizes=FALSE]
-# raw_counts_filtered <-  copy(merged_raw_counts)[rowSums(copy(merged_raw_counts$counts) > 10) >= 3, , keep.lib.sizes=FALSE]
-# rpkm_counts_filtered <- copy(merged_rpkm_counts)[rownames(raw_counts_filtered),, keep.lib.sizes=FALSE]
 dim(merged_raw_counts)
 dim(raw_counts_filtered)
 
-# filtered_peak_width <- copy(peak_width)[names(peak_width) %in% rownames(raw_counts_filtered) ]
-# rpkm_counts_filtered <- copy(raw_counts_filtered)
-# rpkm_counts_filtered$counts <- rpkm(rpkm_counts_filtered$counts,gene.length = filtered_peak_width)
-pdf(paste(outplot_dir,"density_reads_in_peaks_filtered.pdf",sep=''),width=7,height=7)
+pdf(paste(outplot_dir,"qc-density-reads-in_peaks-filtered.pdf",sep=''),width=7,height=7)
 plot_densities(make_dt(cpm(raw_counts_filtered$counts,log=T,prior.counts = prior_counts)))
 dev.off()
 
@@ -205,7 +195,7 @@ dev.off()
 # cpm_counts_filtered = copy(raw_counts_filtered)
 # cpm_counts_filtered$counts = cpm(cpm_counts_filtered$counts,log=T,prior.counts= prior_counts)
 
-pdf(paste(outplot_dir,"distribution_unnormalised_filtered_counts.pdf",sep=''),width=7,height=7)
+pdf(paste(outplot_dir,"qc-distribution-unnormalised-filtered-counts.pdf",sep=''),width=7,height=7)
 plot_boxes(make_dt(log2(rpkm_counts_filtered$counts+prior_counts)),ylab='log2 RPKM')
 dev.off()
 
@@ -227,13 +217,8 @@ dev.off()
 ## get RPKM and quantile normalise these
 quantnorm_rpkm_counts <- copy(rpkm_counts_filtered)
 quantnorm_rpkm_counts$counts <- normalizeBetweenArrays(quantnorm_rpkm_counts$counts, method = "quantile")
-# quant_norm_counts <- voom(raw_counts_filtered$counts, normalize.method = "quantile")
 
-# quantnorm_raw_counts <- copy(raw_counts_filtered)
-# quantnorm_raw_counts$counts <- normalizeBetweenArrays(quantnorm_raw_counts$counts, method = "quantile")
-## quant_norm_counts <- voom(raw_counts_filtered$counts, normalize.method = "quantile")
-
-pdf(paste(outplot_dir,"distribution_quantile_normalised_filtered_counts.pdf",sep=''),width=7,height=7)
+pdf(paste(outplot_dir,"qc-distribution-quantile-normalised-filtered-counts.pdf",sep=''),width=7,height=7)
 plot_boxes(make_dt(log2(quantnorm_rpkm_counts$counts+prior_counts)),ylab='log2 RPKM')
 dev.off()
 
@@ -257,7 +242,7 @@ pca_plot <- function(pca_results,components){
 
     plot <-ggplot(df,aes(x=x,y=y,col=group))+
     geom_point(size=3)+
-    scale_color_manual(values = human_chimp_col) +
+    scale_color_manual(values = da_species_palette[-1]) +
     xlab(label_plot(prop_exp_var[1]))+
     ylab(label_plot(prop_exp_var[2]))+
     theme(
@@ -270,11 +255,11 @@ pca_plot <- function(pca_results,components){
   return(plot)
 }
 
-pdf(paste(outplot_dir,"pca_screeplot.pdf",sep=''),width = 7, height = 7)
+pdf(paste(outplot_dir,"qc-pca-screeplot.pdf",sep=''),width = 7, height = 7)
 plot(pca)
 dev.off()
 
-pdf(paste(outplot_dir,"pca_quantnorm_counts.pdf",sep=''),width = 7, height = 7)
+pdf(paste(outplot_dir,"pca-quantnorm-counts.pdf",sep=''),width = 7, height = 7)
 pca_plot(pca,c(1:2))
 dev.off()
 
@@ -328,14 +313,7 @@ top_pc_associations <- copy(pcs_associations)%>%as.data.table()%>%melt(id.vars='
 top_pc_associations <- top_pc_associations[,.SD[which.max(value)], by=.(PC)][,value:=round(as.numeric(value),2)]
 top_pc_associations <- top_pc_associations[,PC:=factor(PC,levels=top_pc_associations$PC)]
 
-# top_pc_associations <- top_pc_associations[
-#     ,maximum_column :=  names(.SD)[max.col(.SD)], .SDcols = 2:5
-#     ][
-#         , .(Max = do.call(max, .SD)), .SDcols = 2:5, .(PC,maximum_column)
-#         ][
-#             ,Max:=round(as.numeric(Max),2)
-#             ]
-pdf(paste(outplot_dir,"pca_top_pc_association.pdf",sep=''),width=7,height=7)
+pdf(paste(outplot_dir,"qc-top-pc-association.pdf",sep=''),width=7,height=7)
 ggplot(top_pc_associations,aes(x=PC,y=value,fill=variable))+
 geom_histogram(stat='identity', position=position_dodge(width=0.5))+
 xlab('PC')+
@@ -350,13 +328,13 @@ theme_classic()+
 dev.off()
 
 ## Heatmap 
-pdf(paste(outplot_dir,"heatmap_quantnorm_pearson_corr.pdf",sep=''),width=7,height=7)
+pdf(paste(outplot_dir,"heatmap-quantnorm-pearson-corr.pdf",sep=''),width=7,height=7)
 Heatmap(cor(log2(quantnorm_rpkm_counts$counts+prior_counts),method='pearson'), name = "Pearson corr", col=viridis(10)) 
 dev.off()
 
-pdf(paste(outplot_dir,"heatmap_quantnorm_spearman_corr.pdf",sep=''),width=7,height=7)
-Heatmap(cor(log2(quantnorm_rpkm_counts$counts+prior_counts),method='spearman'), name = "Spearman corr", col=viridis(10)) 
-dev.off()
+# pdf(paste(outplot_dir,"heatmap_quantnorm_spearman_corr.pdf",sep=''),width=7,height=7)
+# Heatmap(cor(log2(quantnorm_rpkm_counts$counts+prior_counts),method='spearman'), name = "Spearman corr", col=viridis(10)) 
+# dev.off()
 
 ##------------
 ## DA testing
@@ -377,7 +355,7 @@ designlist <- list(
 
 compare_models <- selectModel(quantnorm_rpkm_counts$counts,designlist)
 
-pdf(paste(outplot_dir,"compare_model_design.pdf",sep=''),width = 7, height = 7)
+pdf(paste(outplot_dir,"qc-compare-model-design.pdf",sep=''),width = 7, height = 7)
 aic_score =  as.data.table(table(compare_models$pref))
 colnames(aic_score) = c('model_design','aic_score')
 ggplot(aic_score,aes(x=reorder(model_design,-aic_score),y=aic_score)) +
@@ -391,17 +369,13 @@ colnames(model_species_sex_frip) <- c("chimp", "human",'sex_M','frip')
 
 y <- estimateDisp(quantnorm_rpkm_counts, model_species_sex_frip) 
 fit <- glmQLFit(y, model_species_sex_frip, robust=TRUE)
-# results <- glmQLFTest(fit, contrast=makeContrasts(human-chimp,levels=model_species_sex_frip))
-results <- glmTreat(fit, contrast=makeContrasts(human-chimp,levels=model_species_sex_frip),lfc = log2(2))
+results <- glmQLFTest(fit, contrast=makeContrasts(human-chimp,levels=model_species_sex_frip))
+# results <- glmTreat(fit, contrast=makeContrasts(human-chimp,levels=model_species_sex_frip),lfc = log2(2))
 
 ## get df with final results_df
 ## peaks to keep 
-human_peaks_to_keep <- copy(as.data.table(final_human_peaks))[peakID %in% rownames(results$table),][,c('width','strand'):=NULL]
-chimp_peaks_to_keep <- copy(as.data.table(final_chimp_peaks))[peakID %in% rownames(results$table),][,c('width','strand'):=NULL]
-
-# final_results <- data.frame(results$table)
-# final_results <- dplyr::mutate(final_results,'peakID'= rownames(final_results))%>%as.data.table()
-# final_results <- final_results[, c("chimp_peakID", "human_peakID") := tstrsplit(peakID, ".", fixed=TRUE)][,peakID:=NULL]
+human_peaks_to_keep <- copy(as.data.table(final_hg38_peaks))[peakID %in% rownames(results$table),][,c('width','strand'):=NULL]
+chimp_peaks_to_keep <- copy(as.data.table(final_panTro5_peaks))[peakID %in% rownames(results$table),][,c('width','strand'):=NULL]
 
 ## these are in hg38 coordinates
 final_results <- data.frame(results$table)
@@ -418,41 +392,17 @@ final_results <-  final_results[
 ] 
 
 nrow(final_results[DA=='da'])
-# [1] 12921
+# [1] 42223
 nrow(final_results[DA=='da'])/nrow(final_results)
-# [1] 0.1593906
+# [1] 0.2625498
 nrow(final_results[DA=='da'][logFC>0])/nrow(final_results[DA=='da'])
-# [1] 0.5763486
-
-# final_results <- inner_join(
-#     final_results,as.data.table(final_human_peaks),by=c('human_peakID'='peakID')
-#     )%>%setnames(
-#         old=c(range_keys),new=c(paste('human_',range_keys,sep=''))
-#         )%>%inner_join(
-#             as.data.table(final_chimp_peaks),by=c('chimp_peakID'='peakID')
-#             )%>%setnames(
-#                 old=c(range_keys),new=c(paste('chimp_',range_keys,sep=''))
-#                 )%>%dplyr::select(
-#                     -c(contains('width'),contains('strand'))
-# )%>%as.data.table()
+# [1] 0.5646212
 
 final_results <- final_results[human_peaks_to_keep,on='peakID',nomatch=0]
 
-
-#             [
-#                 peaks_df,on='peakID',nomatch=0
-#             ][
-#                 ,c('width','strand'):=NULL
-#                 ][
-#                     ,peak_species := ifelse(DA == 'non_da' ,'non_da',ifelse(DA=='da'& logFC <0,'da_chimp','da_human'))
-# ] 
-
-final_colors <- c(human_chimp_col,'grey')
-names(final_colors) = c(names(human_chimp_col),'non_da')
-
 ## QCs
 ## check distribution Pvalues
-pdf(paste(outplot_dir,"da_test_distribution_raw_pvals.pdf",sep=''),width = 7, height = 7)
+pdf(paste(outplot_dir,"qc-distribution-raw-pvals.pdf",sep=''),width = 7, height = 7)
 ggplot(final_results,aes(x=round(PValue,4))) +geom_histogram(binwidth=0.01)+
 xlab('raw pvalue')+
 theme_classic()+
@@ -463,11 +413,11 @@ theme_classic()+
 dev.off()
 
 ## check distribution peak lengths between da and nonda peaks
-pdf(paste(outplot_dir,"da_test_peak_sizes.pdf",sep=''),width = 7, height = 7)
+pdf(paste(outplot_dir,"qc-da-peak-sizes.pdf",sep=''),width = 7, height = 7)
 df <- copy(final_results)[,width:=end-start]
 ggplot(df,aes(x=width,fill=da_species)) +
 geom_density(alpha=0.5) +
-scale_fill_manual(values=final_colors)+
+scale_fill_manual(values=da_species_palette)+
 theme_classic()+
   theme(
     legend.position = "bottom",
@@ -481,7 +431,7 @@ dev.off()
 ma_plot = function(df){
     plot <- ggplot(df,aes(x = logCPM, y = logFC, col = da_species)) + 
         geom_point(alpha=0.2) + 
-        scale_color_manual(values = final_colors) + 
+        scale_color_manual(values = da_species_palette) + 
         geom_smooth(inherit.aes=F, aes(x = logCPM, y = logFC), method = "loess",se = F) + # smoothed loess fit; can add span=0.5 to reduce computation load/time
         geom_hline(yintercept = 0) + labs(col = NULL)+
         theme_classic()+
@@ -492,7 +442,7 @@ ma_plot = function(df){
         return(plot)
 }
 
-pdf(paste(outplot_dir,"da_test_ma_plot.pdf",sep=''),width = 7, height = 7)
+pdf(paste(outplot_dir,"ma-plot.pdf",sep=''),width = 7, height = 7)
 ma_plot(final_results)
 dev.off()
 
@@ -501,10 +451,9 @@ dev.off()
 volcano_plot <-function(df){
     plot <- ggplot(df) + 
     geom_point(aes(x = logFC,y =-log10(FDR), col = da_species),alpha=0.2)+
-    # scale_color_manual(values = da_palette) + 
     geom_hline(yintercept=-log10(pval_threshold), linetype='dashed', color='black', size=0.5)+
     geom_vline(xintercept=0, linetype='dashed', color='black', size=0.5)+
-    scale_colour_manual(values=final_colors)+
+    scale_colour_manual(values=da_species_palette)+
     theme_classic()+
     xlim(-8,+8)+
     theme(
@@ -514,10 +463,10 @@ volcano_plot <-function(df){
     return(plot)
 }
 
-pdf(paste(outplot_dir,"da_test_volcano_plot.pdf",sep=''),width = 7, height = 7)
+pdf(paste(outplot_dir,"volcano-plot.pdf",sep=''),width = 7, height = 7)
 volcano_plot(final_results)
 dev.off()
 
 ## export DA resutls
-write.table(final_results,paste('./post_processing_analyses/',da_dir,'new_da_results.txt',sep=''),sep='\t',col.names=T,row.names = F,quote=F)
+write.table(final_results,paste('./post_processing_analyses/files',da_dir,'da_results.txt',sep=''),sep='\t',col.names=T,row.names = F,quote=F)
 

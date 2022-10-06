@@ -11,8 +11,7 @@ options(width=150)
 
 setwd('/data/projects/punim0595/dvespasiani/Human_Chimpanzee_iPSCs_chromatin_accessibility/post_processing_analyses')
 
-scripts_dir <- './scripts/'
-source(paste(scripts_dir,'utils.R',sep=''))
+source('./scripts/utils.R')
 
 outplot_dir <- create_dir(plot_dir,'hars')
 
@@ -21,7 +20,7 @@ hars <- fread('./data/hars-hg19-uebbing2019.txt',sep='\t',header=T)%>%setnames(o
 setkeyv(hars,range_keys)
 
 ## get DA peaks
-da_results <- read_da_results('new_da_results.txt')
+da_results <- read_da_results('da_results.txt')
 da_results <- da_results[,c(..range_keys,'DA','peakID','FDR','da_species','logFC','peaktype')]
 setkeyv(da_results,range_keys)
 
@@ -61,13 +60,13 @@ colnames(hars_or_matrix) = c('mypeaks','randpeaks')
 rownames(hars_or_matrix) = c('overlap','nonoverlap')
 fisher.test(hars_or_matrix)
 # data:  hars_or_matrix
-# p-value = 0.003349
+# p-value = 3.955e-07
 # alternative hypothesis: true odds ratio is not equal to 1
 # 95 percent confidence interval:
-#  1.069879 1.416717
+#  1.164341 1.415703
 # sample estimates:
 # odds ratio 
-#   1.230769 
+#   1.283661
 
 ## check if DA peaks are enriched within hars compare to non-da peaks
 da_hars_or_matrix <- matrix(
@@ -84,13 +83,13 @@ colnames(da_hars_or_matrix) = c('da','nonda')
 rownames(da_hars_or_matrix) = c('overlap','nonoverlap')
 fisher.test(da_hars_or_matrix)
 # data:  da_hars_or_matrix
-# p-value = 0.5682
+# p-value = 0.6617
 # alternative hypothesis: true odds ratio is not equal to 1
 # 95 percent confidence interval:
-#  0.8318475 1.3725618
+#  0.8326441 1.1169796
 # sample estimates:
 # odds ratio 
-#   1.074279 
+#  0.9656635 
 
 
 ## then look at distribution number of hsubstitution per har based on uebbing et al data
@@ -105,11 +104,11 @@ comparisons = list(
   c('all_hars','non_da'),
   c('da','non_da')
 )
-ggplot(df,aes(x=DA,y=log(No_hSubs+1),fill=DA))+
+ggplot(df,aes(x=DA,y=log10(No_hSubs+1),fill=DA))+
     geom_violin(trim=T,scale = "width")+
     geom_boxplot(width=.1, position =  position_dodge(width = 0.4),outlier.size=0.2,fill='white',notch=T)+
-    # scale_fill_manual(values = chrom_state_colors)+
-    xlab('Genomic element') + ylab('log number of human-specific substitutions')+
+    scale_fill_manual(values = c('grey',da_palette),labels=c('all_hars',names(da_palette)))+
+    xlab('Genomic element') + ylab('log10 number of human-specific substitutions')+
     stat_compare_means(
         method = "wilcox.test",
         comparisons = comparisons,
@@ -123,21 +122,21 @@ ggplot(df,aes(x=DA,y=log(No_hSubs+1),fill=DA))+
     )
 dev.off()
 
-## check enrichment of diff active sequences in diff accessible peaks
-concord_mpra_atac = copy(mypeaks_harsoverlap)[
-    ,c("DiffActive",'No_hSubs','logFC','DA')
-    ][
-        ,conc:=ifelse(DA=='da'& DiffActive=='YES','conc',ifelse(DA=='non_da'& DiffActive=='NO','conc','disc'))
-        ][
-            ,numbconc:=.N,by=.(conc,DA)
-]
+# ## check enrichment of diff active sequences in diff accessible peaks
+# concord_mpra_atac = copy(mypeaks_harsoverlap)[
+#     ,c("DiffActive",'No_hSubs','logFC','DA')
+#     ][
+#         ,conc:=ifelse(DA=='da'& DiffActive=='YES','conc',ifelse(DA=='non_da'& DiffActive=='NO','conc','disc'))
+#         ][
+#             ,numbconc:=.N,by=.(conc,DA)
+# ]
 
-x=copy(concord_mpra_atac)[,c('conc','DA','numbconc')]%>%unique()
-y=as.matrix(dcast(x,conc~DA,value.var='numbconc')[,conc:=NULL])
-y=as.matrix(dcast(x,conc~DA,value.var='numbconc'))
-colnames(y) = c('da','nonda')
-rownames(y) = c('conc','disc')
-fisher.test(y)
+# x=copy(concord_mpra_atac)[,c('conc','DA','numbconc')]%>%unique()
+# y=as.matrix(dcast(x,conc~DA,value.var='numbconc')[,conc:=NULL])
+# y=as.matrix(dcast(x,conc~DA,value.var='numbconc'))
+# colnames(y) = c('da','nonda')
+# rownames(y) = c('conc','disc')
+# fisher.test(y)
 
-##check correlation logFC numb human specific substitution
-cor.test(concord_mpra_atac[conc=='conc'&DA=='da']$No_hSubs,abs(concord_mpra_atac[conc=='conc'&DA=='da']$logFC))
+# ##check correlation logFC numb human specific substitution
+# cor.test(concord_mpra_atac[conc=='conc'&DA=='da']$No_hSubs,abs(concord_mpra_atac[conc=='conc'&DA=='da']$logFC))

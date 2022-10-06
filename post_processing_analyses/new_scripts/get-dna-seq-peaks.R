@@ -1,10 +1,11 @@
 ## use this script to generate a fasta file containing the sequence
 ## in the respective species coordinates for each the peak 
-##--------------------------------------------------------------------------------------------------
+##-------------------------------------------------------------------------------------------------------------
 ## run script from command line as 
 ## Rscript ./get_dna_seq_peaks.R input output
-## e.g., Rscript ./get_dna_seq_peaks.R da_results.txt output/sequences/all_peaks_seq.fa
-##--------------------------------------------------------------------------------------------------
+## e.g., Rscript ./scripts/get_dna_seq_peaks.R da_results.txt output/sequences/all_peaks_seq.fa
+## e.g., Rscript ./scripts/get_dna_seq_peaks.R output/random_regions/random_genomic_regions.txt output/sequences/random_regions_seq.fa
+##-------------------------------------------------------------------------------------------------------------
 
 library(dplyr)
 library(data.table)

@@ -277,8 +277,10 @@ pluripotency_motifs<- lapply(pluripotency_motif_files,function(x){
 names(pluripotency_motifs) = plurip_filnames
 pluripotency_motifs <- Map(mutate,pluripotency_motifs,tf=names(pluripotency_motifs))%>%rbindlist()
 
+top_pluripotency_motifs = copy(pluripotency_motifs)[rank_score>=0.7]
+
 ## add genomic region
-da_results <- read_da_results('new_da_results.txt')
+da_results <- read_da_results('da_results.txt')
 da_results <- da_results[,c(..range_keys,'DA','peakID','FDR','da_species','logFC')]
 
 pluripotency_motifs <- pluripotency_motifs[
@@ -292,7 +294,7 @@ pluripotency_motifs <- pluripotency_motifs[
 ]
 
 ## plot distribution number of motifs by rank scores
-pdf(paste(outplot_dir,'distribution_ranked_motif_scores.pdf',sep=''),width=10,height=7)
+pdf(paste(outplot_dir,'qc-distribution-ranked-motif-scores.pdf',sep=''),width=10,height=7)
 df <- copy(pluripotency_motifs)[,c(..range_keys,'rank_score')]%>%unique()
 ggplot(df,aes(x=rank_score))+geom_bar()+
 ylab('number of motifs')+
@@ -308,139 +310,139 @@ dev.off()
 numb_peaks_w_plurip_tf <- copy(top_pluripotency_motifs$peakID)%>%unique()%>%length()
 numb_peaks <- copy(da_results$peakID)%>%length()
 numb_peaks_w_plurip_tf/numb_peaks*100
-#[1] 79.69008
+#[1] 32.56456
 
-tfs <- copy(pluripotency_motifs)%>%split(by='tf')%>%lapply(function(x)x=x[,peakID]%>%unique())
+tfs <- copy(top_pluripotency_motifs)%>%split(by='tf')%>%lapply(function(x)x=x[,peakID]%>%unique())
 plurip_tf_palette <- c('#c1121f','#723d46','#e29578','#606c38','lightgray')
 names(plurip_tf_palette) = c('nanog','oct4','sox2','ctcf','other')
 
-pdf(paste(outplot_dir,'pluripotency_tf_upset.pdf',sep=''),width=10,height=7)
+pdf(paste(outplot_dir,'upset-pluripotency-tf.pdf',sep=''),width=10,height=7)
 UpSetR::upset(UpSetR::fromList(tfs),nsets = 6,order.by = "freq")
 dev.off()
 
-## look whether they are enriched within bivalent states
-chrom_state_dir <- '../data/iPSC_chrom_states_hg38'
-ipsc_chromstate <- read_chromstate(chrom_state_dir) ## these contain info for sex chr and are in hg38 coord
-setkeyv(ipsc_chromstate,range_keys)
+# ## look whether they are enriched within bivalent states
+# chrom_state_dir <- '../data/iPSC_chrom_states_hg38'
+# ipsc_chromstate <- read_chromstate(chrom_state_dir) ## these contain info for sex chr and are in hg38 coord
+# setkeyv(ipsc_chromstate,range_keys)
 
-## overlap ranges
-annotate_peaks <- function(peaks){
-  annotated <- foverlaps(copy(peaks),ipsc_chromstate,type='any')%>%na.omit()
-  annotated <- annotated[
-    ,overlap:=ifelse(i.start<start,i.end-start,end-i.start),by=.(cell_type)
-    ][
-        ,.SD[which.max(overlap)], by=.(peakID,cell_type)
-        ][
-            ,c(range_keys[-1],'overlap'):=NULL
-            ]%>%setnames(old=c('i.start','i.end'),new=c(range_keys[-1]))
-  return(annotated)
-}
+# ## overlap ranges
+# annotate_peaks <- function(peaks){
+#   annotated <- foverlaps(copy(peaks),ipsc_chromstate,type='any')%>%na.omit()
+#   annotated <- annotated[
+#     ,overlap:=ifelse(i.start<start,i.end-start,end-i.start),by=.(cell_type)
+#     ][
+#         ,.SD[which.max(overlap)], by=.(peakID,cell_type)
+#         ][
+#             ,c(range_keys[-1],'overlap'):=NULL
+#             ]%>%setnames(old=c('i.start','i.end'),new=c(range_keys[-1]))
+#   return(annotated)
+# }
 
-mypeaks_annotation <- annotate_peaks(da_results)
-mypeaks_annotation <- mypeaks_annotation[,pluripotency:=ifelse(peakID %in% pluripotency_motifs$peakID,'yes','no')]
+# mypeaks_annotation <- annotate_peaks(da_results)
+# mypeaks_annotation <- mypeaks_annotation[,pluripotency:=ifelse(peakID %in% pluripotency_motifs$peakID,'yes','no')]
 
-count_peaks_chromstate <- function(peaks){
-  counts <- copy(peaks)
-  counts<-counts[
-      ,numb_peaks_chromstate:=.N,by=.(chrom_state,cell_type)
-      ][
-        ,numb_peaks:=.N,by=.(cell_type)
-        ][
-            ,c('cell_type','chrom_state','numb_peaks_chromstate','numb_peaks')
-            ]%>%unique()
-  return(counts)
-}
+# count_peaks_chromstate <- function(peaks){
+#   counts <- copy(peaks)
+#   counts<-counts[
+#       ,numb_peaks_chromstate:=.N,by=.(chrom_state,cell_type)
+#       ][
+#         ,numb_peaks:=.N,by=.(cell_type)
+#         ][
+#             ,c('cell_type','chrom_state','numb_peaks_chromstate','numb_peaks')
+#             ]%>%unique()
+#   return(counts)
+# }
 
-mypeaks_plurip_tf_counts <- count_peaks_chromstate(mypeaks_annotation[pluripotency=='yes'])%>%split(by='cell_type')
-mypeaks_other_tf_counts <- count_peaks_chromstate(mypeaks_annotation[pluripotency!='yes'])%>%split(by='cell_type')
+# mypeaks_plurip_tf_counts <- count_peaks_chromstate(mypeaks_annotation[pluripotency=='yes'])%>%split(by='cell_type')
+# mypeaks_other_tf_counts <- count_peaks_chromstate(mypeaks_annotation[pluripotency!='yes'])%>%split(by='cell_type')
 
-plurip_tf_chromstate_or <- purrr::map2(mypeaks_plurip_tf_counts,mypeaks_other_tf_counts,function(x,y){
-  or<-calculate_or(x,y,'chrom_state')%>%adjust_pvalues()
-  or <- or[,6:=NULL]
-  return(or)
-})
-plurip_tf_chromstate_or <- Map(mutate,plurip_tf_chromstate_or,cell_type=names(plurip_tf_chromstate_or))%>%rbindlist()
+# plurip_tf_chromstate_or <- purrr::map2(mypeaks_plurip_tf_counts,mypeaks_other_tf_counts,function(x,y){
+#   or<-calculate_or(x,y,'chrom_state')%>%adjust_pvalues()
+#   or <- or[,6:=NULL]
+#   return(or)
+# })
+# plurip_tf_chromstate_or <- Map(mutate,plurip_tf_chromstate_or,cell_type=names(plurip_tf_chromstate_or))%>%rbindlist()
 
-## plot the results
-plot_or <- function(peaks){
-  p <- ggplot(peaks,aes(x=factor(elements,levels=chrom_states),y=log(odds_ratio),fill=elements))+
-    geom_violin(trim=T,scale = "width")+
-    geom_dotplot(binaxis='y', stackdir='center',position=position_dodge(1),binwidth=0.2)+
-    scale_fill_manual(values = chrom_state_colors)+
-    geom_hline(yintercept=0,linetype='dashed')+
-    xlab('chromatin state') + ylab('log OR')+
-    theme_classic()+
-    theme(
-      legend.position = "bottom",
-      axis.text.x =element_blank(),
-      axis.ticks.x =element_blank()
-    )
-  return(p)
-}
+# ## plot the results
+# plot_or <- function(peaks){
+#   p <- ggplot(peaks,aes(x=factor(elements,levels=chrom_states),y=log(odds_ratio),fill=elements))+
+#     geom_violin(trim=T,scale = "width")+
+#     geom_dotplot(binaxis='y', stackdir='center',position=position_dodge(1),binwidth=0.2)+
+#     scale_fill_manual(values = chrom_state_colors)+
+#     geom_hline(yintercept=0,linetype='dashed')+
+#     xlab('chromatin state') + ylab('log OR')+
+#     theme_classic()+
+#     theme(
+#       legend.position = "bottom",
+#       axis.text.x =element_blank(),
+#       axis.ticks.x =element_blank()
+#     )
+#   return(p)
+# }
 
-pdf(paste(outplot_dir,'or_peaks_w_plurip_tf_vs_peaks_without_chromstate.pdf',sep=''),width=7,height = 7)
-plot_or(plurip_tf_chromstate_or)
-dev.off()
+# pdf(paste(outplot_dir,'or_peaks_w_plurip_tf_vs_peaks_without_chromstate.pdf',sep=''),width=7,height = 7)
+# plot_or(plurip_tf_chromstate_or)
+# dev.off()
 
-## check whether these peaks are more conserved compared to all the others
-library(phastCons7way.UCSC.hg38)
+# ## check whether these peaks are more conserved compared to all the others
+# library(phastCons7way.UCSC.hg38)
 
-da_results <- da_results[,pluripotency:=ifelse(peakID %in% pluripotency_motifs$peakID,'yes','no')]
+# da_results <- da_results[,pluripotency:=ifelse(peakID %in% pluripotency_motifs$peakID,'yes','no')]
 
-## expand peaks (i.e. get all bp within peaks from start to end) 
-get_phastCons_score <-function(df){
-    expanded_peaks <- copy(df)[,c(..range_keys,'peakID')]%>%unique()
-    expanded_peaks <- expanded_peaks[,list(start = seq(start, end)), by = peakID] 
-    expanded_peaks <- expanded_peaks[
-        df[,c('seqnames','peakID')],on='peakID',allow.cartesian=T
-        ][
-            ,end:=start
-    ]%>%makeGRangesFromDataFrame(keep.extra.columns=T)
+# ## expand peaks (i.e. get all bp within peaks from start to end) 
+# get_phastCons_score <-function(df){
+#     expanded_peaks <- copy(df)[,c(..range_keys,'peakID')]%>%unique()
+#     expanded_peaks <- expanded_peaks[,list(start = seq(start, end)), by = peakID] 
+#     expanded_peaks <- expanded_peaks[
+#         df[,c('seqnames','peakID')],on='peakID',allow.cartesian=T
+#         ][
+#             ,end:=start
+#     ]%>%makeGRangesFromDataFrame(keep.extra.columns=T)
 
-    phastCons <- phastCons7way.UCSC.hg38
+#     phastCons <- phastCons7way.UCSC.hg38
 
-    scores <- gscores(phastCons, expanded_peaks)%>%as.data.table()
-    rm(expanded_peaks)
-    scores <- scores[
-            ,avg_phastcons:=mean(default),by=.(peakID)
-            ][
-                ,c('peakID','avg_phastcons')
-    ]%>%unique()%>%na.omit()
-    final_df <- copy(df)[scores,on='peakID',nomatch=0]
-    return(final_df)
-}
+#     scores <- gscores(phastCons, expanded_peaks)%>%as.data.table()
+#     rm(expanded_peaks)
+#     scores <- scores[
+#             ,avg_phastcons:=mean(default),by=.(peakID)
+#             ][
+#                 ,c('peakID','avg_phastcons')
+#     ]%>%unique()%>%na.omit()
+#     final_df <- copy(df)[scores,on='peakID',nomatch=0]
+#     return(final_df)
+# }
 
-conservation_scores = get_phastCons_score(da_results)
-conservation_peaks_w_tf <- copy(conservation_scores)[pluripotency=='yes'][pluripotency_motifs[,c('tf','peakID')],on='peakID',nomatch=0]
-conservation_peaks_wout_tf <- copy(conservation_scores)[pluripotency=='no'][,tf:='other']
+# conservation_scores = get_phastCons_score(da_results)
+# conservation_peaks_w_tf <- copy(conservation_scores)[pluripotency=='yes'][pluripotency_motifs[,c('tf','peakID')],on='peakID',nomatch=0]
+# conservation_peaks_wout_tf <- copy(conservation_scores)[pluripotency=='no'][,tf:='other']
 
-## plot conservation score 
-comparisons = list(
-  c("nanog",'other'),
-  c('oct4','other'),
-  c('ctcf','other'),
-  c('sox2','other')
-)
-pdf(paste0(outplot_dir,'avg_phastcons_peaks_w_pluriptf.pdf',sep=''),width = 7, height = 7)
-df <- rbind(conservation_peaks_w_tf,conservation_peaks_wout_tf)
-tf_order <- c('nanog', 'oct4','ctcf','sox2','other')
-ggplot(df,aes(x=factor(tf,level=tf_order),y=avg_phastcons,fill=tf))+
-  geom_violin(trim=T,scale = "width")+
-  geom_boxplot(width=.1, position =  position_dodge(width = 0.4),outlier.size=0.2,fill='white',notch=T)+
-  scale_fill_manual(values=plurip_tf_palette)+
-  xlab(' ')+ylab('avg phastCons')+
-  stat_compare_means(
-  method = "wilcox.test",
-  comparisons = comparisons,
-  size=5
-  )+
-  theme_classic()+
-  theme(
-    legend.position = "bottom",
-    axis.text.x =element_blank(),
-    axis.ticks.x =element_blank()
-  )
-dev.off()
+# ## plot conservation score 
+# comparisons = list(
+#   c("nanog",'other'),
+#   c('oct4','other'),
+#   c('ctcf','other'),
+#   c('sox2','other')
+# )
+# pdf(paste0(outplot_dir,'avg_phastcons_peaks_w_pluriptf.pdf',sep=''),width = 7, height = 7)
+# df <- rbind(conservation_peaks_w_tf,conservation_peaks_wout_tf)
+# tf_order <- c('nanog', 'oct4','ctcf','sox2','other')
+# ggplot(df,aes(x=factor(tf,level=tf_order),y=avg_phastcons,fill=tf))+
+#   geom_violin(trim=T,scale = "width")+
+#   geom_boxplot(width=.1, position =  position_dodge(width = 0.4),outlier.size=0.2,fill='white',notch=T)+
+#   scale_fill_manual(values=plurip_tf_palette)+
+#   xlab(' ')+ylab('avg phastCons')+
+#   stat_compare_means(
+#   method = "wilcox.test",
+#   comparisons = comparisons,
+#   size=5
+#   )+
+#   theme_classic()+
+#   theme(
+#     legend.position = "bottom",
+#     axis.text.x =element_blank(),
+#     axis.ticks.x =element_blank()
+#   )
+# dev.off()
 
 ## look if DA peaks are enriched for these TFs (by permutation)
 permute_devtfs <- function(x){
@@ -490,7 +492,7 @@ permute_devtfs <- function(x){
 # tf_da_enrichment <- Map(mutate,tf_da_enrichment,tf=names(tf_da_enrichment))%>%rbindlist()%>%setorderv('zscore',1)
 # tf_da_enrichment <- tf_da_enrichment[,abslog_zscore:=log(abs(zscore))][,log_zscore:=ifelse(zscore<0,-abslog_zscore,abslog_zscore)]
 
-alltfs_daenrichment <- permute_devtfs(pluripotency_motifs) 
+# alltfs_daenrichment <- permute_devtfs(pluripotency_motifs) 
 toptfs_daenrichment <- permute_devtfs(top_pluripotency_motifs) 
 
 plot_enrichments <- function(enrich_res,column,palette,xlab){
@@ -510,197 +512,14 @@ plot_enrichments <- function(enrich_res,column,palette,xlab){
 }
 
 
-pdf(paste(outplot_dir,'enrichm_pluripotency_tf_davsnonda.pdf',sep=''),width=8,height = 5)
-plot_enrichments(enrich_res=alltfs_daenrichment,column=alltfs_daenrichment$tf,palette=plurip_tf_palette[-5],xlab='TF')
-dev.off()
-
-
-pdf(paste(outplot_dir,'enrichm_top_pluripotency_tf_davsnonda.pdf',sep=''),width=8,height = 5)
+pdf(paste(outplot_dir,'enrich-plurip-tfs-da-vs-nonda.pdf',sep=''),width=7,height = 7)
 plot_enrichments(enrich_res=toptfs_daenrichment,column=toptfs_daenrichment$tf,palette=plurip_tf_palette[-5],xlab='TF')
 dev.off()
 
-# ## for each of these TFs make volcano plot of logFC
-# volcano_plot <-function(df){
-#     plot <- ggplot(df) + 
-#     geom_point(aes(x = logFC,y =-log10(FDR), col = tf),alpha=0.2)+
-#     # scale_color_manual(values = da_palette) + 
-#     geom_hline(yintercept=-log10(0.01), linetype='dashed', color='black', size=0.5)+
-#     geom_vline(xintercept=0, linetype='dashed', color='black', size=0.5)+
-#     scale_colour_manual(values=plurip_tf_palette)+
-#     theme_classic()+
-#     xlim(-8,+8)+
-#     theme(
-#         legend.position = "bottom",
-#         axis.ticks.x =element_blank()
-#         )
-#     return(plot)
-# }
 
-# ctcf_motifs <- copy(pluripotency_motifs)[tf=='ctcf']
-# nanog_motifs <- copy(pluripotency_motifs)[tf=='nanog']
-# oct4_motifs <- copy(pluripotency_motifs)[tf=='oct4']
-# sox2_motifs <- copy(pluripotency_motifs)[tf=='sox2']
-
-# pdf(paste(outplot_dir,'ctcf_volcano.pdf',sep=''),width=7,height = 7)
-# volcano_plot(ctcf_motifs)
+# pdf(paste(outplot_dir,'enrich-topranked-plurip-tfs-da-vs-nonda.pdf',sep=''),width=7,height = 7)
+# plot_enrichments(enrich_res=toptfs_daenrichment,column=toptfs_daenrichment$tf,palette=plurip_tf_palette[-5],xlab='TF')
 # dev.off()
 
-# pdf(paste(outplot_dir,'nanog_volcano.pdf',sep=''),width=7,height = 7)
-# volcano_plot(nanog_motifs)
-# dev.off()
-
-# pdf(paste(outplot_dir,'oct4_volcano.pdf',sep=''),width=7,height = 7)
-# volcano_plot(oct4_motifs)
-# dev.off()
-
-# pdf(paste(outplot_dir,'sox2_volcano.pdf',sep=''),width=7,height = 7)
-# volcano_plot(sox2_motifs)
-# dev.off()
-# # ##----------------
-# ## filter motifs
-# ##----------------
-# ## FDR adjust pvalues
-# ## remove motifs with fdr adj.pval > 0.01 
-# ## remove motifs present in less than 5% of target sequences
-
-# filtered_motifs <- copy(homer_known_results)%>%lapply(
-#   function(x){
-#     x<-x[
-#       ,log_pval:=ifelse(`Log P-value`< -729,-745,`Log P-value`) ## done this to control R from converting <<< 0 values to 0
-#       ][
-#         ,log10_fdr_adjP:=-log10(p.adjust(exp(log_pval),'fdr'))
-#         ][
-#           log10_fdr_adjP > 2
-#           ][
-#             prop_motif_in_target>5
-#             ][
-#               !motif_name %like% 'Unknown'
-#               ][
-#                 ,motif_name:=ifelse(motif_name %like% 'BORIS','CTCFL',motif_name)
-#                 ]
-#   }
-# )
-
-# number_filtered_motifs = copy(filtered_motifs)%>%lapply(function(x)as.data.table(x)[,'motif_name']%>%unique()%>%nrow())
-# ##--------------
-# ## plot results
-# ##--------------
-# ## important: GFY is a general factor Y, which refers to a motif for which HOMER doesnt know which if the factor that binds it (see http://homer.ucsd.edu/homer/motif/motifDatabase.html)
-# ## however, these motifs are real and some TFs have been described binding them (see http://genesdev.cshlp.org/content/24/14/1479.long)
-# ## what I'll do is to report the family for this as 'unknown' and in the text I will mention this and cite the above paper.
-# motifs_table = copy(filtered_known_motif)%>%lapply(function(x)x=x[,c('motif_name','motif_family','species','log10_fdr_adjP')])%>%rbindlist()
-# motifs_table = motifs_table[,motif_family:=ifelse(motif_family=='?','Unknown',motif_family)][,motif_name_family:=paste(motif_name,motif_family,sep=':')][,c('motif_name','motif_family'):=NULL]
-
-# ## create matrix for heatmap
-# matrix = copy(motifs_table)[
-#   ,.SD[which.max(log10_fdr_adjP)], by=.(species,motif_name_family)
-# ]
-# matrix = dcast(matrix, motif_name_family~species,value.var='log10_fdr_adjP')
-# matrix[is.na(matrix)]=0
-# matrix_rownames = matrix$motif_name_family
-# matrix = matrix[,motif_name_family:=NULL]%>%as.matrix()
-# rownames(matrix) = matrix_rownames
-
-# filtered_matrix = copy(matrix)
-# filtered_matrix=filtered_matrix[rowSums(filtered_matrix)>100, ]
-# filtered_matrix[!rownames(filtered_matrix) %like% 'Zic2', ]
-
-# ## get random colors for motif families 
-# n_tf_families = length(unique(gsub(".*:","",rownames(filtered_matrix))))
-
-# qual_col_palette = brewer.pal.info[brewer.pal.info$category == 'qual',]
-# col_vector = unlist(mapply(brewer.pal, qual_col_palette$maxcolors, rownames(qual_col_palette)))
-
-# tf_family_colors = sample(col_vector,n_tf_families)
-# names(tf_family_colors) = unique(gsub(".*:","",rownames(filtered_matrix)))
-
-
-# ## plot heatmamp
-# homer_heatmap = function(x){
-#   Heatmap(
-#       x, 
-#       border = T, 
-#       col= viridis(1000),
-#       row_dend_reorder = T,
-#       # row_order=order(as.character(gsub("^.*\\.", "", rownames(enrichmatrix)))),
-#       show_heatmap_legend = T,
-#       heatmap_legend_param = list(title = '-log10 fdr adj P'),
-#       show_row_names = T,
-#       row_labels = gsub("\\:.*", "", rownames(x)),
-#       row_title =" ",
-#       show_column_names = T,
-#       column_names_gp = gpar(fontsize = 10),
-#       column_names_rot = 70,
-#       column_title =' ',
-#       right_annotation = HeatmapAnnotation(
-#                   which='row',
-#                   width = unit(1.5,'cm'),
-#                   cluster = anno_simple(
-#                       gsub(".*:","",rownames(x)),
-#                       col= tf_family_colors
-#                       ),
-#                       show_annotation_name = F)
-#                       )
-# }
-
-# pdf(paste(outplot_dir,'homer_known_heatmap.pdf',sep=''),width= 10,height = 20)
-# homer_heatmap(filtered_matrix)
-# dev.off()
-
-
-# ##----------------------------
-# ## create motif logo object
-# ##----------------------------
-# ## for this read again HOMER results but using marge 
-# ## this allows to retrieve the PWMs for plotting
-# library(marge)
-# library(motifStack)
-
-# chimp_known_pwms = read_known_results(paste(homer_dir,'chimp/',sep=''))
-# common_known_pwms = read_known_results(paste(homer_dir,'common/',sep=''))
-# human_known_pwms = read_known_results(paste(homer_dir,'human/',sep=''))
-
-# my_motifs = list(chimp_known_pwms,common_known_pwms,human_known_pwms)%>%lapply(function(y)y=dplyr::select(y,c('motif_name','motif_pwm'))%>%as.data.table())
-# my_motifs = lapply(my_motifs,function(x)x=x[,motif_name:=ifelse(motif_name %like% 'BORIS','CTCFL',motif_name)][motif_name %in% gsub('\\:.*','',rownames(filtered_matrix))])%>%rbindlist()%>%tibble()%>%unique()
-# names(my_motifs$motif_pwm)=my_motifs$motif_name
-
-# motif_names=as.list(my_motifs$motif_name)
-# motifs_pwm=copy(my_motifs$motif_pwm)
-
-# get_motif_logo=function(pwm,names){
-#   motifs=copy(pwm)%>%as.matrix()%>%t()
-#   colnames(motifs)=paste('V',1:dim(motifs)[2],sep='')
-
-#   motif_object= new("pcm", mat=motifs, name=names)
-#   return(motif_object)
-# }
-
-# my_motif_object= purrr::map2(motifs_pwm,motif_names,function(x,y)get_motif_logo(x,y))
-
-# pdf(paste(outplot_dir,'logo_homer_top_known_motifs.pdf',sep=''),width= 15,height = 5)
-# lapply(my_motif_object,function(x)plot(x))
-# dev.off()
-
-# ## now make a barplot with proportion motif families
-# motif_families=data.table(motif_name_family=rownames(filtered_matrix))
-# motif_families = motif_families[
-#   ,c("motif_name", "motif_family") := tstrsplit(motif_name_family, ":", fixed=TRUE)
-#   ][
-#     ,'motif_name_family':=NULL
-#     ][
-#       ,numb_motifs_by_family:=.N,by=.(motif_family)
-#       ][
-#         ,numb_motifs:=.N
-#         ][
-#           ,prop_family:=numb_motifs_by_family/numb_motifs
-#           ][
-#             ,mock_col:='tf_family'
-#           ]
-# prop_motif_families = copy(motif_families)[,c('prop_family','motif_family','mock_col')]%>%unique()
-
-# pdf(paste(outplot_dir,'prop_families_homer_top_known_motifs.pdf',sep=''),width= 5,height = 10)
-# ggplot(prop_motif_families,aes(x=mock_col,y=prop_family,fill=motif_family))+
-# geom_bar(position="fill", stat="identity")+
-# scale_fill_manual(values = tf_family_colors)+ theme_void()
-# dev.off()
+## test for association between de TFs and da peaks
 

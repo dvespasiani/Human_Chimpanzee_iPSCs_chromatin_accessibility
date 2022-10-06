@@ -5,7 +5,7 @@ outdir <- paste(postprocess_dir,'output/',sep='')
 table_dir <- paste(outdir,'tables/',sep='')
 plot_dir <- paste(outdir,'plots/',sep='')
 tads_dir <-  './output/TADs/'
-da_dir <- './output/DA/'
+da_dir <- './output/files/DA/'
 bamDir  <- "/output/Alignment/Files"
 genome <- 'hg38'
 
@@ -50,8 +50,8 @@ samples_palette <- c(
 )
 names(samples_palette) <- samples_names
 
-species_palette <- c('#ff7d00','#15616d')
-names(species_palette) = species_names
+da_species_palette <- c('grey','#219ebc','#fb8500')
+names(da_species_palette) = c('non_da',species_names)
 
 da_palette <- c('#E9D8A6','#0A9396')
 names(da_palette) <- peak_type
@@ -218,79 +218,6 @@ count_peaks = function(x){
     x=x[,c(..range_keys)]%>%unique()%>%nrow()
 
     print(paste('total number of peaks:', x,sep= ' '))
-}
-
-##---------------------------
-## bin peak sizes/distances
-##---------------------------
-bin_distance = function(x,column){
-    x=x[
-    ,binned_column:= ifelse(..column < 50, '0-49',
-                    ifelse(..column >= 50 & ..column < 151,'50-150',
-                    ifelse(..column >= 151 & ..column < 301,'151-300',
-                    ifelse(..column >= 301 & ..column < 451,'301-450',
-                    ifelse(..column >= 451 & ..column < 601,'451-600',
-                    ifelse(..column >= 601 & ..column < 751,'601-750',
-                    ifelse(..column >= 751 & ..column < 901,'751-900',
-                    ifelse(..column >= 901 & ..column < 1001,'901-1000',
-                    ifelse(..column >= 1001 & ..column < 1151,'1001-1150',
-                    ifelse(..column >= 1151 & ..column < 1301,'1151-1301',
-                    ifelse(..column >= 1301 & ..column < 1501,'1301-1500',
-                    ifelse(..column >= 1501 & ..column < 2001,'1501-2000',
-                    ifelse(..column >= 2001 & ..column < 3001,'2001-3000',
-                    ifelse(..column >= 3001 & ..column < 4001,'3001-4000',
-                    ifelse(..column >= 4001 & ..column < 5001,'4001-5000',
-                    ifelse(..column >= 5001 & ..column < 6001,'5001-6000','>6000'
-                    ))))))))))))))))
-                    ]
-    return(x)
-}
-
-##-------------
-## LiftOver
-##-------------
-liftPeaks <-  function(peaks,chain_file){
-    chain <- rtracklayer::import.chain(chain_file)
-    peaks_gr = makeGRangesFromDataFrame(peaks,keep.extra.columns=T)
-    seqlevelsStyle(peaks_gr) = "UCSC" 
-    lifted_coord <- liftOver(peaks_gr, chain)%>%reduce(min.gapwidth=50L)%>%unlist()%>%as.data.table()
-    return(lifted_coord)
-}
-
-convert_coord <- function(peaks,chain_file){
-    chain <- rtracklayer::import.chain(paste(chain_path,chain_file,sep=''))
-    original_peak_df <- copy(peaks)[,width:=end-start]
-    original_peak_gr <- makeGRangesFromDataFrame(original_peak_df,keep.extra.columns=T)
-    seqlevelsStyle(original_peak_gr) = "UCSC" 
-    names(original_peak_gr)=original_peak_gr$peakID
-    
-    lifted_peaks = liftOver(original_peak_gr, chain)
-
-    lifted_peaks  = unlist(lifted_peaks)%>%as.data.table()
-    keep = copy(as.data.table(lifted_peaks))[,c('peakID','seqnames')]%>%unique()
-    keep = keep[,diff_chr:=.N,by=.(peakID)][diff_chr==1][seqnames %in% standard_chr]
-
-    peaks_to_keep = copy(lifted_peaks)[
-        peakID %in% keep$peakID
-        ][
-            original_peak_df[,c('width','peakID')],on=c('peakID'),nomatch=0
-            ]
-    merge_peaks = copy(peaks_to_keep)[
-        ,start:=min(start),by=.(peakID)
-        ][
-            ,end:=max(end),by=.(peakID)
-            ][
-                ,width:=end-start
-                ][
-                    ,size_change:=round(width/i.width,2)
-                    ][
-                        size_change>=0.8 & size_change<=1.2
-                        ][
-                            ,c('width','i.width','strand','size_change'):=NULL
-                            ]%>%unique()
-    setkeyv(merge_peaks,range_keys)
-
-    return(merge_peaks)
 }
 
 ##--------------

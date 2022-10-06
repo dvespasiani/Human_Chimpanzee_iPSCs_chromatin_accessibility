@@ -1,5 +1,5 @@
 
-## use this script to find the peaks containing CTCF binding sites
+## use this script to find the peaks containing specific binding sites
 base_dir='/data/projects/punim0595/dvespasiani'
 working_dir="$base_dir/Human_Chimpanzee_iPSCs_chromatin_accessibility/post_processing_analyses"
 homer_dir="$base_dir/homer/motifs"
