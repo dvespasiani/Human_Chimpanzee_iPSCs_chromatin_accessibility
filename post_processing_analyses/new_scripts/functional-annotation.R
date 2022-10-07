@@ -8,6 +8,8 @@ library(ggthemes)
 library(ggplot2)
 library(ggpubr)
 library(regioneR)
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+library(BSgenome.Hsapiens.UCSC.hg38)
 
 options(width=150)
 set.seed(2022)
@@ -121,21 +123,18 @@ fwrite(df2,paste(out_tabledir,'da_nonda_peaks_or_chromstate.txt',sep=''),sep='\t
 ## 1) CpG and GC content
 ## 2) PhastCons score
 
-library(TxDb.Hsapiens.UCSC.hg38.knownGene)
-library(BSgenome.Hsapiens.UCSC.hg38)
-
 promoter_states <- 'Tss|Flnk'
 
-txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
+# txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
 
-all_promoters <- genes(txdb,single.strand.genes.only=FALSE)%>%as.data.table()
-all_promoters <- all_promoters[!seqnames%like% "M|Un|_"][,end:=start][,start:=start-500][,width:=end-start][,c(..range_keys)][,type:='upstream_txdb']
+# all_promoters <- genes(txdb,single.strand.genes.only=FALSE)%>%as.data.table()
+# all_promoters <- all_promoters[!seqnames%like% "M|Un|_"][,end:=start][,start:=start-500][,width:=end-start][,c(..range_keys)][,type:='upstream_txdb']
 
 ipsc_promoters <- copy(ipsc_chromstate)[chrom_state %like% promoter_states][,c(1:3)][,type:='ipsc_promoters']%>%unique()
-random_promoters <- copy(randompeaks_annotation)[chrom_state %like% promoter_states][,c(..range_keys)][,type:='random']%>%unique()
+# random_promoters <- copy(randompeaks_annotation)[chrom_state %like% promoter_states][,c(..range_keys)][,type:='random']%>%unique()
 mypromoters <- copy(mypeaks_annotation)[chrom_state %like% promoter_states][,c(..range_keys,'DA')][,type:=DA][,DA:=NULL]%>%unique()
 
-promoters <- rbind(mypromoters,ipsc_promoters,random_promoters,all_promoters)%>%unique()
+promoters <- rbind(mypromoters,ipsc_promoters)%>%unique()
 
 ## CpG & GC
 cpg <- copy(promoters)%>%makeGRangesFromDataFrame()%>%Repitools::cpgDensityCalc(organism=Hsapiens)
@@ -152,25 +151,22 @@ promoters_gc <- copy(promoters)[
 ]
 
 comparisons = list(
-  c('da','ipsc_promoters'),
-  c('non_da','ipsc_promoters'),
-  c('da','upstream_txdb'),
-  c('non_da','upstream_txdb'),
-  c('da','random'),
-  c('non_da','random'),
-  c('non_da','da')
+  c('ipsc_promoters','da'),
+  c('ipsc_promoters','non_da'),
+  c('da','non_da')
 )
+
 ## plot function
 plot_promoters <- function(x,column_to_plot,ylab){
 
   df <- copy(x)[,column:=column_to_plot]
   
-  type_order <- c('ipsc_promoters', 'upstream_txdb','random', 'da','non_da')
+  type_order <- c('ipsc_promoters','da','non_da')
   
   p <- ggplot(df,aes(x=factor(type,level=type_order),y=column,fill=type))+
   geom_violin(trim=T,scale = "width")+
   geom_boxplot(width=.1, position =  position_dodge(width = 0.4),outlier.size=0.2,fill='white',notch=T)+
-  scale_fill_manual(values=promoters_palette)+
+    scale_fill_manual(values = c('grey',da_palette),labels=c('ipsc_promoters',names(da_palette)))+
   xlab(' ')+ylab(ylab)+
   stat_compare_means(
   method = "wilcox.test",

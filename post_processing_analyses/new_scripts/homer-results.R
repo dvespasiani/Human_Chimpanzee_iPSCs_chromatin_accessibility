@@ -12,6 +12,7 @@ library(viridisLite)
 library(RColorBrewer)
 library(GenomicRanges)
 library(openxlsx)
+library(org.Hs.eg.db)
 
 options(width=150)
 setwd('/data/projects/punim0595/dvespasiani/Human_Chimpanzee_iPSCs_chromatin_accessibility/post_processing_analyses/')
@@ -47,13 +48,7 @@ read_homer_results <- function(file){
 
 homer_results <- read_homer_results(homer_files)
 
-# ## all homer motifs
-# all_homer_motifs<- universalmotif::read_homer('/data/projects/punim0595/dvespasiani/homer/downloaded_homer.motifs')
-# all_homer_motifs_dt <- copy(all_homer_motifs)%>%lapply(function(y)data.table(motif_name=y@name))%>%rbindlist()%>%unique()
-
-##----------------
 ## filter motifs
-##----------------
 ## remove motifs with fdr adj.pval > 0.01 
 ## remove motifs present in less than 5% of target sequences
 ## then modify motif names to retrieve their ensembl IDs
@@ -79,25 +74,16 @@ filtered_motifs <- copy(homer_results)[
                             ,gene_symbol:= gsub("\\+.*","",gene_symbol)
                             ][
                               ,gene_symbol:= gsub("\\..*","",gene_symbol)
+                              ][
+                                ,.SD[which.max(abs(log10pval))], by=.(gene_symbol)
 ]
+
+top_enriched_motifs = copy(filtered_motifs)[,rankPval:= round(log10pval/max(log10pval)*100,1)][rankPval>=50]
 
 ## export filtered motifs in excel file for supplementary
 write.xlsx(filtered_motifs[,c('gene_symbol','motif_family','pval','padj')],paste(outfile_dir,'homer_filtered_motifs.xlsx',sep=''),append=F,overwrite=T)
 
-###  ** those motifs are already invidually enriched plus I individually analyse them (see below) ** ###
-
-## numb and prop
-numb_initial_motifs <- length(unique(homer_results$gene_symbol))
-numb_filtered_motifs <-length(unique(filtered_motifs$gene_symbol))
-round(numb_filtered_motifs/numb_initial_motifs *100,2)
-#  35.18
-length(unique(filtered_motifs$motif_family))
-# [1] 53
-
-##-----------------------
-## read expression data 
-##-----------------------
-library(biomaRt)
+## Add gene expression data
 rnaseq_dir = '../rna_seq/'
 counts_dir = 'output/PostAlignment/'
 
@@ -116,151 +102,81 @@ human_cpm_counts <- read_expression('./hg38/',"ipsc_human_counts.txt",'mean_expr
 
 ipsc_counts <- merge(chimp_cpm_counts,human_cpm_counts,by="EnsemblID", all=T)
 
-## filter ipsc_counts by the number of genes retained at the end of DE testing
-de_info <- fread(
+genExprInfo <- fread(
   "../rna_seq/de_output/irenes_files/topSpecies.loess.norm.norandom_ipsc_final_no_ribo.out",
   sep=' ',header=F,col.names=c('genes','EnsemblID','logFC','AveExpr','t','P.Value','adj.P.Val','B')
   )[
-    ,de_logFC:=logFC
+    ,de_logFC:=-logFC
     ][
         ,DE:=ifelse(adj.P.Val <= 0.01,'de','non_de')
         ][
           ,c('P.Value','AveExpr','t','B','genes','logFC'):=NULL
 ]
 
-ipsc_counts<- merge(ipsc_counts,de_info,on='EnsemblID')
+ipsc_counts<- merge(ipsc_counts,genExprInfo,on='EnsemblID')
 
-## get gene symbols
-# ensembl.mart <- useMart(
-#     # host='https://dec2016.archive.ensembl.org',
-#     biomart='ENSEMBL_MART_ENSEMBL', 
-#     dataset='hsapiens_gene_ensembl'
-# )
-
-# ensembl_id_gene_symbol <- getBM(
-#     attributes = c('ensembl_gene_id','hgnc_symbol'), 
-#     filters = 'ensembl_gene_id', 
-#     values = ipsc_counts$EnsemblID,
-#     mart = ensembl.mart
-# )%>%as.data.table()
-# names(ensembl_id_gene_symbol) = c('EnsemblID','gene_symbol')
-
-library(org.Hs.eg.db) # remember to install it if you don't have it already
+## get ensembl ids for list of TFs and add expression info
 symbols <- mapIds(org.Hs.eg.db, keys = ipsc_counts$EnsemblID, keytype = "ENSEMBL", column="SYMBOL")
 symbols <- data.table(EnsemblID=names(symbols),gene_symbol=symbols)
 
-## add expression info
-filtered_motifs_expr <- copy(filtered_motifs)[,c('log10pval','gene_symbol','motif_family','prop_motif_in_target')]%>%full_join(symbols,by='gene_symbol')%>%as.data.table()  
-filtered_motifs_expr <- filtered_motifs_expr[,keep:=ifelse(is.na(log10pval),'no','yes')][keep=='yes'][,keep:=NULL]
+motif_expr <- copy(filtered_motifs)[,c('log10pval','gene_symbol','prop_motif_in_target')]%>%full_join(symbols,by='gene_symbol')%>%as.data.table()  
+motif_expr <- motif_expr[,keep:=ifelse(is.na(log10pval),'no','yes')][keep=='yes'][,keep:=NULL]
+mean_expr <- copy(ipsc_counts)%>%dplyr::select(c('EnsemblID','DE',contains('mean')))
+motif_expr <- merge(motif_expr,mean_expr,by='EnsemblID',all.x=T)
 
-mean_expr <- copy(ipsc_counts)%>%dplyr::select(c('EnsemblID','adj.P.Val',contains('mean')))
+## make heatmap of results only for top enriched motifs
+top_motif_expr <- copy(motif_expr)[ gene_symbol %in% top_enriched_motifs$gene_symbol ]
 
-filtered_motifs_expr <- merge(filtered_motifs_expr,mean_expr,by='EnsemblID',all.x=T)
-filtered_motifs_expr <- filtered_motifs_expr[,tfsymbol_fam:=paste(gene_symbol,motif_family,sep=':')]
+mat_rownames <- copy(top_motif_expr$gene_symbol)
+mat <- copy(top_motif_expr)[,log10pval]%>%as.matrix()
+rownames(mat) = mat_rownames
 
-## correlation TF enrichment TF expression
-tf_w_expr_only <- copy(filtered_motifs_expr)%>%na.omit()
-
-cor.test(tf_w_expr_only$log10pval,tf_w_expr_only$mean_expr_human)
-# 	Pearson's product-moment correlation
-
-# data:  tf_w_expr_only$log10pval and tf_w_expr_only$mean_expr_human
-# t = 1.3528, df = 75, p-value = 0.1802
-# alternative hypothesis: true correlation is not equal to 0
-# 95 percent confidence interval:
-#  -0.07213612  0.36567449
-# sample estimates:
-#       cor 
-# 0.1543363 
-
-cor.test(tf_w_expr_only$log10pval,tf_w_expr_only$mean_expr_chimp)
-# 	Pearson's product-moment correlation
-
-# data:  tf_w_expr_only$log10pval and tf_w_expr_only$mean_expr_chimp
-# t = 1.1593, df = 75, p-value = 0.25
-# alternative hypothesis: true correlation is not equal to 0
-# 95 percent confidence interval:
-#  -0.09409951  0.34636179
-# sample estimates:
-#       cor 
-# 0.1326756 
-
-##--------------------
-## plot results 
-##--------------------
-# pvals <- copy(genwide_motif_enrichment)[,c('DE','tf_symbol')][,p_sign:=ifelse(DE=='de','*',NA)]%>%dplyr::pull('p_sign')
-# names(pvals) = genwide_motif_enrichment$tf_symbol
-
-motifs_expr <- copy(filtered_motifs_expr)[log10pval>-log10(1e-200)]
-
-matzscore_rownames <- copy(motifs_expr$tfsymbol_fam)
-mat_zscore <- copy(motifs_expr)[,log10pval]%>%as.matrix()
-rownames(mat_zscore) = matzscore_rownames
-
-# colfun_zscore = circlize::colorRamp2(c(min(mat_zscore), 0, max(mat_zscore)), c("#0582CA", "white", "#d62828"))
-
-## cluster colors
-qual_col_palette = brewer.pal.info[brewer.pal.info$category == 'qual',]
-col_vector = unlist(mapply(brewer.pal, qual_col_palette$maxcolors, rownames(qual_col_palette)))
-
-cluster_colors = sample(col_vector,length(unique(gsub(".*:","",rownames(mat_zscore)))))
-names(cluster_colors) = unique(gsub(".*:","",rownames(mat_zscore)))
-
-## de pval annotation
-de_pval <- copy(motifs_expr$adj.P.Val)
-de_pval[is.na(de_pval)] <- 1
-de_pval <- -log10(de_pval)
-names(de_pval) <- gsub(".*:","",rownames(mat_zscore))
-
-heatmap_zscore <- Heatmap(
-  mat_zscore,
+heatmap_enrich <- Heatmap(
+  mat,
   name='log10 FDR-adjusted pvalue',
   col=magma(10),
   heatmap_legend_param = list(direction = "horizontal")
 )
 
-mat_expr <- copy(motifs_expr)[,c('mean_expr_chimp','mean_expr_human')]%>%as.matrix()
+## add heatmap with gene expr and DE annotation
+de_info <- copy(top_motif_expr)[,de:=ifelse(DE=='de','*',' ')]$de
+names(de_info) <- gsub(".*:","",rownames(mat))
+de_cols = c('white','white','white')
+names(de_cols) = levels(as.factor(de_info))
+
+mat_expr <- copy(top_motif_expr)[,c('mean_expr_chimp','mean_expr_human')]%>%as.matrix()
 mat_expr <- log2(mat_expr+2)
 mat_expr[is.na(mat_expr)]<-0
-rownames(mat_expr) = matzscore_rownames
+rownames(mat_expr) = mat_rownames
 
 colfun_expr = circlize::colorRamp2(c(seq(min(mat_expr),max(mat_expr),2.5)), c('gray82',"#FFFF3F",'#BFD200',"#2B9348"))
 
-col_depval <- circlize::colorRamp2(c(seq(min(de_pval),max(de_pval),2.5)), c('gray82',c("#00b4d8","#0077b6","#023e8a","#03045e")))
-
-# c("#03045e","#023e8a","#0077b6","#0096c7","#00b4d8","#48cae4","#90e0ef","#ade8f4","#caf0f8")
-
-
-# depval_colors <- viridis(length(de_pval))
-# names(depval_colors) = names(de_pval)
-
 heatmap_expr <- Heatmap(
   mat_expr,
+  show_column_dend = F,
   name='avg gene expression \n (log2 CPM)',
   col=colfun_expr,
   heatmap_legend_param = list(direction = "horizontal"),
   right_annotation = HeatmapAnnotation(
     which='row',
-    de_pvalue = anno_simple(de_pval,width = unit(1,'cm'),col=col_depval),
-    cluster = anno_simple(gsub(".*:","",rownames(mat_zscore)),width = unit(1,'cm'),col=cluster_colors),
+    de_pvalue = anno_simple(de_info,width = unit(1,'cm'),pch=de_info,col=de_cols),
     show_legend=T 
     )
 )
 
-lgd_pvalue = Legend(
-  title = "log10 DE adj.p", 
-  col_fun = col_depval, at = c(seq(min(de_pval),max(de_pval),2.5)), 
-  direction = "horizontal"
-)
-
-pdf(paste(outplot_dir,'heatmap_expressed_enriched_motifs.pdf',sep=''),width=7,height = 10)
+pdf(paste(outplot_dir,'heatmap-top-enrich-motif-expression.pdf',sep=''),width=5,height = 10)
 draw(
-  heatmap_zscore+heatmap_expr,
-  annotation_legend_list = list(lgd_pvalue),
+  heatmap_enrich+heatmap_expr,
+  # annotation_legend_list = list(lgd_pvalue),
   heatmap_legend_side = "bottom", 
   annotation_legend_side = "bottom"
 )
 dev.off()
+
+##---------------------------------------------------------
+## Test correlation between DA peaks and TF expression
+expressed_tfs <- copy(motif_expr)%>%na.omit()
+
 
 ##------------------------
 ## pluripotency motifs
