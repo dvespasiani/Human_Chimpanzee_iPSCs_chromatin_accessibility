@@ -2,10 +2,10 @@
 basedir <- '/data/projects/punim0595/dvespasiani/Human_Chimpanzee_iPSCs_chromatin_accessibility/'
 postprocess_dir <- paste(basedir,'post_processing_analyses/',sep='')
 outdir <- paste(postprocess_dir,'output/',sep='')
+dadir <- paste(outdir,'files/differential-accessibility/',sep='')
 table_dir <- paste(outdir,'tables/',sep='')
 plot_dir <- paste(outdir,'plots/',sep='')
 tads_dir <-  './output/TADs/'
-da_dir <- './output/files/DA/'
 bamDir  <- "/output/Alignment/Files"
 genome <- 'hg38'
 
@@ -184,7 +184,7 @@ permute_data <- function(metric, peak_type, n=10000){
 
 ## read files 
 read_da_results <-  function(file,significance){
-    df <- fread(paste(da_dir,file,sep=''),sep='\t',header=T)%>%
+    df <- fread(paste(dadir,file,sep=''),sep='\t',header=T)%>%
     dplyr::select(c(all_of(range_keys),everything()))
     setkeyv(df,range_keys)
     return(df)

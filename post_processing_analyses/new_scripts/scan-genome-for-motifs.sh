@@ -4,7 +4,7 @@ base_dir='/data/projects/punim0595/dvespasiani'
 working_dir="$base_dir/Human_Chimpanzee_iPSCs_chromatin_accessibility/post_processing_analyses"
 homer_dir="$base_dir/homer/motifs"
 
-input_fa="$working_dir/output/sequences/all_peaks_seq.fa"
+input_fa="$working_dir/output/files/sequences/all_peaks_seq.fa"
 output_file="$working_dir/output/homer/homer_output/"
 
 
@@ -20,7 +20,7 @@ for m in "${motifs[@]}"; do
       mkdir -p "$outdir";
     fi
     
-    findMotifs.pl $input_fa fasta "$outdir" -find "$homer_dir/$m" > "$outdir/${basename_motif}_discovered.txt" -norevopp -fdr
+    findMotifs.pl $input_fa fasta "$outdir" -find "$homer_dir/$m" > "$outdir/${basename_motif}_discovered.txt" -fdr
     rm $outdir/*.tmp 
     rm $outdir/motifFindingParameters.txt
 done

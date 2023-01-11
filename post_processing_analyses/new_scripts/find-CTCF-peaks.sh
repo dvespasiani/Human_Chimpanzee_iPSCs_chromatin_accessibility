@@ -29,7 +29,7 @@ echo -e "seqnames\tstart\tend" | cat - ${g}_tmp_ctcf.bed > ${g}_ctcf_merged.bed
 ## get the DNA seq for all hg38 CTCF peaks and merge the 2 files (i.e., bed + fasta)
 Rscript get_dna_seq_peaks.R output/homer/homer_output/ctcf/genome_wide_ctcf/hg38_ctcf_merged.bed output/sequences/hg38_all_ctcf.fa
 
-cd ${wd}/output/sequences/
+cd ${wd}/output/files/sequences/
 awk 'BEGIN{RS=">"}{gsub("\n","\t",$0); print ""$0}' hg38_all_ctcf.fa > tmp.bed
 tail -n +2  tmp.bed >  tmp_out.bed
 echo -e "peakID\tsequence" | cat - tmp_out.bed > hg38_all_ctcf_seq.bed
@@ -43,11 +43,11 @@ paste --delimiters='\t' hg38_ctcf_merged.bed hg38_all_ctcf_seq.bed > hg38_all_ct
 rm *_ctcf.bed && rm hg38_ctcf_merged.bed && rm hg38_all_ctcf_seq.bed
 
 ## Find CTCFs motif only in the target fasta files
-fasta_dir="$wd/output/sequences"
+fasta_dir="$wd/output/files/sequences"
 
 for fa in "$fasta_dir"/*.fa; do
     basename_fa="$(echo $(basename $fa)| cut -f 1 -d '.')"
-    findMotifs.pl "$fa" fasta  "$target_seq_ctcf" -find "$motif_file" > "$target_seq_ctcf/${basename_fa}_discovered_ctcf.txt" -norevopp
+    findMotifs.pl "$fa" fasta  "$target_seq_ctcf" -find "$motif_file" > "$target_seq_ctcf/${basename_fa}_discovered_ctcf.txt" 
 done
 
 ## Finally remove tmp files if still there

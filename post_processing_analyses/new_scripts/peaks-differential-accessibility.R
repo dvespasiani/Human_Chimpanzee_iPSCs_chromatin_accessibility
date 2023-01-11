@@ -57,6 +57,7 @@ plot_densities <-function(dt){
     return(p)
 }
 
+
 ## Read the mapped consensus peaks
 ## for this and all downstream analyses use peaks in hg38 coords. 
 ## so get the panTro5 peaks mapped to hg38 coordinates and then combine the 2 data tables 
@@ -67,25 +68,35 @@ get_peaks = function(file){
     return(f)
 }
 
-human_cons_peaks = get_peaks('human_consensus_peaks.bed')# hg38 coords
-human_map_peaks_panTro5 = get_peaks('human_consensus_peaks_mapped.bed') # pantro5 coords
-human_map_peaks_hg38 = copy(human_cons_peaks)[peakID %in% human_map_peaks_panTro5$peakID]
+human_cons_peaks = get_peaks('human_consensus_peaks_liftForward_liftBack.bed')# hg38 coords
+human_map_peaks_panTro5 = get_peaks('human_consensus_peaks_liftForward.bed') # pantro5 coords
+human_map_peaks_panTro5 <- human_map_peaks_panTro5[peakID %in% human_cons_peaks$peakID]
+# human_map_peaks_hg38 = copy(human_cons_peaks)[peakID %in% human_map_peaks_panTro5$peakID]
 
-chimp_cons_peaks = get_peaks('chimp_consensus_peaks.bed') # pantro5 coords
-chimp_map_peaks_hg38 = get_peaks('chimp_consensus_peaks_mapped.bed') # hg38 coords
-chimp_map_peaks_panTro5 = copy(chimp_cons_peaks)[peakID %in% chimp_map_peaks_hg38$peakID]
+chimp_cons_peaks = get_peaks('chimp_consensus_peaks_liftForward_liftBack.bed') # pantro5 coords
+chimp_map_peaks_hg38 = get_peaks('chimp_consensus_peaks_liftForward.bed') # hg38 coords
+chimp_map_peaks_hg38 <- chimp_map_peaks_hg38[peakID %in% chimp_cons_peaks$peakID]
+# chimp_map_peaks_panTro5 = copy(chimp_cons_peaks)[peakID %in% chimp_map_peaks_hg38$peakID]
 
 ## get common peaks by looking at overlap betweeen genomic regions
 ## and create 2 common peaks dt (1 x species) with the common genomic regions in the relative species genomic coordinates
-common_peaks_hg38 = foverlaps(chimp_map_peaks_hg38,human_map_peaks_hg38,type='any')%>%na.omit()
-common_peaks_hg38 = common_peaks_hg38[,peaktype:='common']%>%unique()%>%
-setnames(old=c('peakID','i.peakID'),new=c('human_peakID','chimp_peakID'))
+common_peaks_hg38 = foverlaps(chimp_map_peaks_hg38,human_cons_peaks,type='any')%>%na.omit()%>%unique()%>%setnames(old=c('peakID','i.peakID'),new=c('human_peakID','chimp_peakID'))
 
-unique_common_peaks = copy(common_peaks_hg38)[,c('human_peakID','chimp_peakID')]%>%unique()
-unique_common_peaks = unique_common_peaks[,duphuman:=.N,by=.(chimp_peakID)][,dupchimp:=.N,by=.(human_peakID)][duphuman == 1 & dupchimp==1]
+unique_common_peaks = copy(common_peaks_hg38)[,c('human_peakID','chimp_peakID','i.support','support')]%>%unique()
+unique_common_peaks = unique_common_peaks[
+    ,duphuman:=.N,by=.(chimp_peakID)
+    ][
+        ,dupchimp:=.N,by=.(human_peakID)
+        ][
+            duphuman == 1 & dupchimp==1
+            ][
+                i.support > 1 & support >1
+                ][
+                    ,peaktype:='common'
+]
 
-common_peaks_hg38 = copy(human_map_peaks_hg38)[peakID %in% unique_common_peaks$human_peakID][,peaktype:='common']
-common_peaks_panTro5 = copy(chimp_map_peaks_panTro5)[peakID %in% unique_common_peaks$chimp_peakID][,peaktype:='common']
+common_peaks_hg38 = copy(human_cons_peaks)[peakID %in% unique_common_peaks$human_peakID][,peaktype:='common']
+common_peaks_panTro5 = copy(chimp_cons_peaks)[peakID %in% unique_common_peaks$chimp_peakID][,peaktype:='common']
 
 ## now get species-specific peaks in their relative species coordinates
 human_sp_hg38 = copy(human_map_peaks_hg38)[! peakID %in% common_peaks_hg38$peakID][,peaktype:='human_sp']
@@ -392,11 +403,11 @@ final_results <-  final_results[
 ] 
 
 nrow(final_results[DA=='da'])
-# [1] 42223
+# [1] 25774
 nrow(final_results[DA=='da'])/nrow(final_results)
-# [1] 0.2625498
+# [1] 0.1858135
 nrow(final_results[DA=='da'][logFC>0])/nrow(final_results[DA=='da'])
-# [1] 0.5646212
+# [1] 0.5716614
 
 final_results <- final_results[human_peaks_to_keep,on='peakID',nomatch=0]
 
@@ -468,5 +479,5 @@ volcano_plot(final_results)
 dev.off()
 
 ## export DA resutls
-write.table(final_results,paste('./post_processing_analyses/files',da_dir,'da_results.txt',sep=''),sep='\t',col.names=T,row.names = F,quote=F)
+write.table(final_results,paste(outdir,'files/da_results.txt',sep=''),sep='\t',col.names=T,row.names = F,quote=F)
 

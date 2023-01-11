@@ -32,6 +32,7 @@ read_consensus_peaks <- function(genome,peakfile){
     setkeyv(peaks,range_keys)
     return(peaks)
 }
+
 human_consensus_peaks <- read_consensus_peaks('./hg38/','human_hg38_macs2_default_peaks.narrowPeak')
 chimp_consensus_peaks <- read_consensus_peaks('./panTro5/','chimp_pantro5_macs2_default_peaks.narrowPeak')
 
@@ -74,7 +75,33 @@ pdf(paste(outplot_dir,'chimp-support-consensus-peak.pdf',sep=''),width=10,height
 upset(fromList(chimp_support_peaks$IDs),nsets = 6,order.by = "freq")
 dev.off()
 
+
+## add individual support as extra column to each consensus peak (for later filtering)
+get_support_peakIDs <- function(supportPeaks){ 
+        common_peaks <- Reduce(intersect,supportPeaks$IDs)
+        support_table <- as.data.table(fromList(supportPeaks$IDs))
+        support_table <- support_table[,support := rowSums(support_table)][,peakID := unique(unlist(supportPeaks$IDs))][,c('peakID','support')]
+        return(support_table)
+}
+
+
+human_peak_support <- get_support_peakIDs(human_support_peaks)
+chimp_peak_support <- get_support_peakIDs(chimp_support_peaks)
+
+
+human_consensus_peaks_support <- merge(copy(human_consensus_peaks), copy(human_peak_support), by = "peakID", all = TRUE)
+human_consensus_peaks_support[is.na(human_consensus_peaks_support)] <- 0
+human_consensus_peaks_support <- human_consensus_peaks_support%>%dplyr::select(all_of(range_keys),'peakID','support')
+
+chimp_consensus_peaks_support <- merge(copy(chimp_consensus_peaks), copy(chimp_peak_support), by = "peakID", all = TRUE)
+chimp_consensus_peaks_support[is.na(chimp_consensus_peaks_support)] <- 0
+chimp_consensus_peaks_support <- chimp_consensus_peaks_support%>%dplyr::select(all_of(range_keys),'peakID','support')
+
+
 ## export new set of peaks
-fwrite(human_consensus_peaks,paste(outfile_dir,'human_consensus_peaks.bed',sep=''),sep='\t',col.names=T,quote=F,row.names=F)
-fwrite(chimp_consensus_peaks,paste(outfile_dir,'chimp_consensus_peaks.bed',sep=''),sep='\t',col.names=T,quote=F,row.names=F)
+fwrite(human_consensus_peaks_support,paste(outfile_dir,'human_consensus_peaks.bed',sep=''),sep='\t',col.names=T,quote=F,row.names=F)
+fwrite(chimp_consensus_peaks_support,paste(outfile_dir,'chimp_consensus_peaks.bed',sep=''),sep='\t',col.names=T,quote=F,row.names=F)
+
+
+
 

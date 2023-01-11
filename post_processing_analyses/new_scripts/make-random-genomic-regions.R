@@ -17,7 +17,7 @@ source(paste(scripts_dir,'utils.R',sep=''))
 set.seed(2022)
 
 wd='/data/projects/punim0595/dvespasiani/Human_Chimpanzee_iPSCs_chromatin_accessibility/post_processing_analyses/'
-outdir = 'output/random_regions/'
+outdir = 'output/files/random_regions/'
 
 dir.create(file.path(wd, outdir), showWarnings = FALSE)
 

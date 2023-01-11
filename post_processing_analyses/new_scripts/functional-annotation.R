@@ -33,7 +33,7 @@ ipsc_chromstate <- read_chromstate(chrom_state_dir) ## these contain info for se
 setkeyv(ipsc_chromstate,range_keys)
 
 ## read random genomic regions
-random_peaks <- fread('./output/random_regions/random_genomic_regions.txt',sep='\t',header=T)
+random_peaks <- fread('./output/files/random_regions/random_genomic_regions.txt',sep='\t',header=T)
 random_peaks <- random_peaks[,peakID:=paste('peak_',1:nrow(random_peaks),sep='')]
 
 ## overlap ranges
@@ -91,9 +91,9 @@ plot_or <- function(peaks){
   return(p)
 }
 
-pdf(paste(outplot_dir,'chromstate-enrich-mypeaks-vs-randomregion.pdf',sep=''),width=7,height = 7)
-plot_or(genwide_peaks_or)
-dev.off()
+# pdf(paste(outplot_dir,'chromstate-enrich-mypeaks-vs-randomregion.pdf',sep=''),width=7,height = 7)
+# plot_or(genwide_peaks_or)
+# dev.off()
 
 ## export or results
 df <- copy(genwide_peaks_or)%>%setnames(old='elements',new='chrom_state')
@@ -117,7 +117,6 @@ dev.off()
 ## export or results
 df2 <- copy(danonda_peaks_or)%>%setnames(old='elements',new='chrom_state')
 fwrite(df2,paste(out_tabledir,'da_nonda_peaks_or_chromstate.txt',sep=''),sep='\t',quote=F,row.names=F,col.names=T)
-
 
 ## get independent sets of promoters and calculate
 ## 1) CpG and GC content
@@ -190,38 +189,38 @@ pdf(paste0(outplot_dir,'peaks-GC-content.pdf',sep=''),width = 7, height = 7)
 plot_promoters(promoters_gc,promoters_gc$gc_content,'Proportion of GC nucleotides')
 dev.off()
 
-## phastCons score
-library(phastCons7way.UCSC.hg38)
+# ## phastCons score
+# library(phastCons7way.UCSC.hg38)
 
-## expand peaks (i.e. get all bp within peaks from start to end) 
-promoters <- promoters[,peakID:=paste(type,1:nrow(promoters),sep='.')]
+# ## expand peaks (i.e. get all bp within peaks from start to end) 
+# promoters <- promoters[,peakID:=paste(type,1:nrow(promoters),sep='.')]
 
-get_phastCons_score <-function(df){
-    expanded_peaks <- copy(df)[,c(..range_keys,'peakID')]
-    expanded_peaks <- expanded_peaks[,list(start = seq(start, end)), by = peakID] 
-    expanded_peaks <- expanded_peaks[
-        df[,c('seqnames','peakID')],on='peakID',allow.cartesian=T
-        ][
-            ,end:=start
-    ]%>%makeGRangesFromDataFrame(keep.extra.columns=T)
+# get_phastCons_score <-function(df){
+#     expanded_peaks <- copy(df)[,c(..range_keys,'peakID')]
+#     expanded_peaks <- expanded_peaks[,list(start = seq(start, end)), by = peakID] 
+#     expanded_peaks <- expanded_peaks[
+#         df[,c('seqnames','peakID')],on='peakID',allow.cartesian=T
+#         ][
+#             ,end:=start
+#     ]%>%makeGRangesFromDataFrame(keep.extra.columns=T)
 
-    phastCons <- phastCons7way.UCSC.hg38
+#     phastCons <- phastCons7way.UCSC.hg38
 
-    scores <- gscores(phastCons, expanded_peaks)%>%as.data.table()
-    rm(expanded_peaks)
-    scores <- scores[
-            ,avg_phastcons:=mean(default),by=.(peakID)
-            ][
-                ,c('peakID','avg_phastcons')
-    ]%>%unique()%>%na.omit()
-    final_df <- copy(df)[scores,on='peakID',nomatch=0]
-    return(final_df)
-}
+#     scores <- gscores(phastCons, expanded_peaks)%>%as.data.table()
+#     rm(expanded_peaks)
+#     scores <- scores[
+#             ,avg_phastcons:=mean(default),by=.(peakID)
+#             ][
+#                 ,c('peakID','avg_phastcons')
+#     ]%>%unique()%>%na.omit()
+#     final_df <- copy(df)[scores,on='peakID',nomatch=0]
+#     return(final_df)
+# }
 
-promoters_scores <- promoters%>%split(by='type')%>%lapply(function(x)get_phastCons_score(x))
+# promoters_scores <- promoters%>%split(by='type')%>%lapply(function(x)get_phastCons_score(x))
 
-promoters_scores <- rbindlist(promoters_scores)[,peakID:=NULL]
+# promoters_scores <- rbindlist(promoters_scores)[,peakID:=NULL]
 
-pdf(paste0(outplot_dir,'peaks-phastcons-score.pdf',sep=''),width = 7, height = 7)
-plot_promoters(promoters_scores,promoters_scores$avg_phastcons,'mean phastCons score')
-dev.off()
+# pdf(paste0(outplot_dir,'peaks-phastcons-score.pdf',sep=''),width = 7, height = 7)
+# plot_promoters(promoters_scores,promoters_scores$avg_phastcons,'mean phastCons score')
+# dev.off()

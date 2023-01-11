@@ -31,7 +31,7 @@ module load python/3.7.4
 
 ## actual script
 wd="/data/projects/punim0595/dvespasiani/Human_Chimpanzee_iPSCs_chromatin_accessibility/post_processing_analyses"
-input_dir="$wd/output/sequences"
+input_dir="$wd/output/files/sequences"
 output_dir="$wd/output/homer/homer_output"
 
 findMotifs.pl ${input_dir}/all_peaks_seq.fa \

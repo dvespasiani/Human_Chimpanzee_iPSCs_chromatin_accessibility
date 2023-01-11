@@ -11,13 +11,14 @@ consensusPeaksDir="$wd/post_processing_analyses/output/files/consensusPeaks"
 hg38TopanTro5="$chainsDir/hg38.panTro5.rbest.chain"
 panTro5Tohg38="$chainsDir/panTro5.hg38.rbest.chain"
 
-hg38Peaks="$consensusPeaksDir/human_consensus_peaks.bed"
-panTro5Peaks="$consensusPeaksDir/chimp_consensus_peaks.bed"
+# hg38Peaks="$consensusPeaksDir/human_consensus_peaks.bed"
+# panTro5Peaks="$consensusPeaksDir/chimp_consensus_peaks.bed"
 
 lift_peaks() {
 
     fbname="$(basename "$1" .bed)"
     chain="$2"
+    suffix="$3"
 
     tmp_file="$consensusPeaksDir/tmp"
     touch $tmp_file
@@ -29,10 +30,10 @@ lift_peaks() {
     echo
     liftOver -bedPlus=3 -tab $tmp_file $chain "${tmp_file}_mapped.bed" "${tmp_file}_unmapped.bed"
 
-    colnames="seqnames\tstart\tend\tpeakID"
+    colnames="seqnames\tstart\tend\tpeakID\tsupport"
 
-    echo -e $colnames | cat - "${tmp_file}_mapped.bed" > "$consensusPeaksDir/${fbname}_mapped.bed"
-    echo -e $colnames | cat - "${tmp_file}_unmapped.bed" | sed '/^#/d' >  "$consensusPeaksDir/${fbname}_unmapped.bed" | sed '/^#/d' 
+    echo -e $colnames | cat - "${tmp_file}_mapped.bed" > "$consensusPeaksDir/${fbname}_${suffix}.bed"
+    echo -e $colnames | cat - "${tmp_file}_unmapped.bed" | sed '/^#/d' >  "$consensusPeaksDir/${fbname}_${suffix}_unmapped.bed" | sed '/^#/d' 
 
     echo
     echo "done"
@@ -40,7 +41,12 @@ lift_peaks() {
 }
 
 
-lift_peaks $hg38Peaks $hg38TopanTro5
-lift_peaks $panTro5Peaks $panTro5Tohg38
+lift_peaks "$consensusPeaksDir/human_consensus_peaks.bed" $hg38TopanTro5 "liftForward"
+lift_peaks "$consensusPeaksDir/chimp_consensus_peaks.bed" $panTro5Tohg38 "liftForward"
+
+lift_peaks "$consensusPeaksDir/human_consensus_peaks_liftForward.bed" $panTro5Tohg38 "liftBack"
+lift_peaks "$consensusPeaksDir/chimp_consensus_peaks_liftForward.bed" $hg38TopanTro5 "liftBack"
 
 rm $consensusPeaksDir/tmp*
+
+rm $consensusPeaksDir/*unmapped.bed

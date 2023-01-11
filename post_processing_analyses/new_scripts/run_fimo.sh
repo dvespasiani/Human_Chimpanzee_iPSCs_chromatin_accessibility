@@ -6,7 +6,7 @@ module load meme/5.1.1-python-3.7.4
 
 
 wd="/data/projects/punim0595/dvespasiani/Human_Chimpanzee_iPSCs_chromatin_accessibility/post_processing_analyses"
-input_dir="$wd/output/sequences"
+input_dir="$wd/output/files/sequences"
 output_dir="$wd/output/fimo_meme"
 
 hocomoco="/data/projects/punim0586/dvespasiani/Annotation_and_other_files/MEME_files/HOCOMOCOv11_core_HUMAN_mono_meme_format.meme"
